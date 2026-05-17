@@ -10,13 +10,24 @@ export async function GET() {
       return NextResponse.json({ count: cached });
     }
 
-    // Query database
-    const result = await db.signature.count();
+    // Count confirmed signatures + pending ones (they are queued and will be processed)
+    const [confirmed, pending] = await Promise.all([
+      db.signature.count(),
+      db.pendingSignature.count({
+        where: { status: { in: ["PENDING", "PROCESSING"] } },
+      }),
+    ]);
+
+    const total = confirmed + pending;
 
     // Store in cache with 10-second TTL
-    cache.set(CACHE_KEYS.TOTAL_SIGNATURES, result, CACHE_TTL.SIGNATURE_COUNT);
+    cache.set(CACHE_KEYS.TOTAL_SIGNATURES, total, CACHE_TTL.SIGNATURE_COUNT);
 
-    return NextResponse.json({ count: result });
+    return NextResponse.json({
+      count: total,
+      confirmed,
+      pending,
+    });
   } catch (error) {
     console.error("Error fetching signature count:", error);
     return NextResponse.json(

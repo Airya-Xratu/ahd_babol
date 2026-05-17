@@ -12,11 +12,21 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Clock,
+  Activity,
 } from "lucide-react";
+
+interface CountData {
+  count: number;
+  confirmed: number;
+  pending: number;
+}
 
 export default function Home() {
   const [showContent, setShowContent] = useState(false);
   const [signatureCount, setSignatureCount] = useState(0);
+  const [confirmedCount, setConfirmedCount] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -36,8 +46,10 @@ export default function Home() {
     try {
       const res = await fetch("/api/count");
       if (res.ok) {
-        const data = await res.json();
+        const data: CountData = await res.json();
         setSignatureCount(data.count);
+        setConfirmedCount(data.confirmed);
+        setPendingCount(data.pending);
       }
     } catch {
       // Silently fail
@@ -100,7 +112,7 @@ export default function Home() {
 
       const data = await res.json();
 
-      if (res.ok) {
+      if (res.status === 202 || res.ok) {
         setSubmitStatus("success");
         setFirstName("");
         setLastName("");
@@ -108,6 +120,7 @@ export default function Home() {
         setMobile("");
         setErrors({});
         setSignatureCount((prev) => prev + 1);
+        setPendingCount((prev) => prev + 1);
         // Refresh count from server
         fetchCount();
       } else {
@@ -224,16 +237,25 @@ export default function Home() {
 
         {/* Signature Count Bar */}
         <div className="bg-gradient-to-l from-emerald-600 to-teal-700 text-white py-3 px-6">
-          <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5" />
               <span className="font-medium">
                 تعداد امضاها: {signatureCount.toLocaleString("fa-IR")}
               </span>
             </div>
-            <span className="text-emerald-100 text-sm">
-              به‌روزرسانی خودکار هر ۱۰ ثانیه
-            </span>
+            <div className="flex items-center gap-4 text-sm">
+              {pendingCount > 0 && (
+                <span className="flex items-center gap-1 text-amber-200">
+                  <Clock className="h-3.5 w-3.5 animate-pulse" />
+                  در صف: {pendingCount.toLocaleString("fa-IR")}
+                </span>
+              )}
+              <span className="flex items-center gap-1 text-emerald-100">
+                <Activity className="h-3.5 w-3.5" />
+                تأیید شده: {confirmedCount.toLocaleString("fa-IR")}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -283,7 +305,10 @@ export default function Home() {
                 className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-3"
               >
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
-                <span>امضای شما با موفقیت ثبت شد. از مشارکت شما سپاسگزاریم!</span>
+                <div>
+                  <span className="font-medium">درخواست شما دریافت شد و در صف پردازش قرار گرفت.</span>
+                  <p className="text-xs mt-1 text-emerald-600">امضای شما پس از تأیید، به شمارنده اضافه خواهد شد.</p>
+                </div>
               </motion.div>
             )}
 
@@ -403,7 +428,7 @@ export default function Home() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="ml-2 h-5 w-5 animate-spin" />
-                    در حال ثبت...
+                    در حال ارسال...
                   </>
                 ) : (
                   <>

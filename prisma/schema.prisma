@@ -19,3 +19,21 @@ model Signature {
   signedAt     DateTime @default(now())
   createdAt    DateTime @default(now())
 }
+
+// Queue table — acts as a persistent message queue (like BullMQ + Redis)
+// The API writes here fast (just INSERT), the worker processes async
+model PendingSignature {
+  id           String   @id @default(cuid())
+  firstName    String
+  lastName     String
+  nationalCode String
+  mobile       String
+  status       String   @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED
+  retryCount   Int      @default(0)
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  processedAt  DateTime?
+
+  @@index([status]) // Fast lookup for worker polling
+}
