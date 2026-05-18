@@ -1,0 +1,15 @@
+# Files/folders to exclude from Liara deployment uploads
+examples/
+skills/
+mini-services/
+Caddyfile
+db/
+.zscripts/
+worklog.md
+dev.log
+dev.out.log
+server.log
+.claude/
+.z-ai-config/
+prompt/
+test/
