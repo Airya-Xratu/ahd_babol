@@ -159,7 +159,10 @@ ahd_babol/
 │       ├── redis.ts           # Redis client singleton
 │       └── validators.ts      # Zod validation schema (Persian errors)
 ├── worker.ts                  # BullMQ worker (standalone process)
-├── docker-compose.yml         # PostgreSQL + Redis
+├── worker.Dockerfile          # Docker image for worker (Liara deployment)
+├── worker.liara.json          # Liara config for worker app
+├── liara.json                 # Liara config for Next.js web app
+├── docker-compose.yml         # PostgreSQL + Redis (local development)
 ├── .env.local.example         # Environment template
 └── package.json
 ```
@@ -281,41 +284,407 @@ docker exec -it covenant_redis redis-cli
 
 ---
 
-## 🚢 Production Deployment (Liara)
+## 🚢 Production Deployment on Liara — Step-by-Step Guide
 
-### Environment Variables on Liara
+This section walks you through **everything** you need to do to deploy the Covenant Signing Platform to [Liara](https://liara.ir), from creating your account to having a live website with a custom domain and SSL.
 
-Set the following in your Liara dashboard:
+### Architecture on Liara
 
-- `DATABASE_URL` — Managed PostgreSQL connection string
-- `REDIS_URL` — Managed Redis connection string
-
-### Worker Service
-
-Add a worker service to `liara.json`:
-
-```json
-{
-  "services": [
-    {
-      "name": "web",
-      "startCommand": "npm start"
-    },
-    {
-      "name": "worker",
-      "startCommand": "npx tsx worker.ts"
-    }
-  ]
-}
+```
+Your Users
+    ↓
+┌─────────────────────────────────────────────────────┐
+│  Liara Cloud Platform                               │
+│                                                     │
+│  ┌──────────┐    ┌──────────┐    ┌──────────────┐  │
+│  │ Next.js   │───▶│  Redis   │───▶│ Docker Worker│  │
+│  │ Web App   │    │ (BullMQ) │    │ (worker.ts)  │  │
+│  │ (PaaS)    │    │ (DBaaS)  │    │ (PaaS/Docker)│  │
+│  └─────┬─────┘    └──────────┘    └──────┬───────┘  │
+│        │                                  │         │
+│        │         ┌──────────────┐         │         │
+│        └────────▶│  PostgreSQL  │◀────────┘         │
+│                  │  (DBaaS)     │                   │
+│                  └──────────────┘                   │
+│                                                     │
+│  All connected via Private Network (internal)       │
+└─────────────────────────────────────────────────────┘
 ```
 
-### Scaling
-
-Both web and worker services can scale horizontally. BullMQ handles distributed workers automatically — just run more worker instances.
+You will create **4 resources** on Liara:
+1. **PostgreSQL database** — stores signatures
+2. **Redis database** — powers the BullMQ job queue + caching
+3. **Next.js web app** — serves the website + API routes
+4. **Docker worker app** — processes the BullMQ queue
 
 ---
 
-## 🔧 Troubleshooting
+### Phase 1: Create a Liara Account
+
+1. Go to [https://liara.ir](https://liara.ir) and click **ثبت‌نام** (Sign Up)
+2. Sign up with your email or phone number
+3. Verify your email/phone
+4. Complete your profile (name, etc.)
+5. Add credit to your account — you can use the dashboard's **شارژ حساب** section. Liara is pay-as-you-go, so you just need enough balance to cover the resources you use.
+
+> 💡 **Tip:** Liara offers a free tier for new accounts. Check their current promotions.
+
+---
+
+### Phase 2: Create a Private Network
+
+All your services (web app, worker, databases) should be on the **same private network** so they can communicate securely without going through the public internet.
+
+1. Log into [Liara Console](https://console.liara.ir)
+2. In the left sidebar, go to **شبکه خصوصی** (Private Network)
+3. Click **ایجاد شبکه خصوصی** (Create Private Network)
+4. Give it a name (e.g., `covenant-net`)
+5. Click **ایجاد**
+
+**Or using CLI:**
+```bash
+npm install -g @liara/cli
+liara login
+liara network create
+```
+
+> ⚠️ **Important:** All your apps and databases MUST be on the same private network to communicate with internal hostnames.
+
+---
+
+### Phase 3: Create the PostgreSQL Database
+
+1. In Liara Console, go to **دیتابیس** (Databases) in the sidebar
+2. Click **راه‌اندازی دیتابیس** (Create Database)
+3. Select **PostgreSQL**
+4. Fill in the form:
+   - **نسخه (Version):** Choose the latest (e.g., 16)
+   - **شناسه (ID):** e.g., `covenant-pg` (must be unique in your account)
+   - **شبکه خصوصی (Private Network):** Select the network you created in Phase 2
+   - **منابع سخت‌افزاری (Resources):** Start with the smallest plan; you can scale up later
+5. Click **راه‌اندازی و نصب دیتابیس** (Create & Install)
+
+**Wait** for the database status to become **آماده به کار** (Ready).
+
+6. After the database is ready, click on it to see its details
+7. Go to **نحوه اتصال** (How to Connect) tab
+8. You'll see two sets of credentials:
+   - **شبکه عمومی (Public Network):** For connecting from outside Liara
+   - **شبکه خصوصی (Private Network):** For connecting from within Liara ← **Use this one**
+
+9. **Copy the Private Network connection string** — it looks like:
+   ```
+   postgresql://covenant_pg:PASSWORD@covenant-pg:5432/postgres
+   ```
+
+10. **Initialize the database schema.** From your local machine (with public access enabled temporarily, or using `liara exec`), run:
+    ```bash
+    # Set DATABASE_URL to the PUBLIC connection string from Liara dashboard
+    export DATABASE_URL="postgresql://covenant_pg:YOUR_PASSWORD@PUBLIC_HOST:5432/postgres"
+
+    # Push the Prisma schema
+    npx prisma db push
+    ```
+
+    > 💡 **Alternative:** You can also enable "دسترسی از طریق شبکه عمومی" (Public Access) temporarily on the database settings, run `prisma db push` from your local machine, then disable public access for security.
+
+**Or using Liara CLI:**
+```bash
+liara db:create --platform=postgres --id=covenant-pg --network=covenant-net
+```
+
+---
+
+### Phase 4: Create the Redis Database
+
+1. In Liara Console, go to **دیتابیس** (Databases)
+2. Click **راه‌اندازی دیتابیس** (Create Database)
+3. Select **Redis**
+4. Fill in the form:
+   - **نسخه (Version):** Choose the latest (e.g., 7)
+   - **شناسه (ID):** e.g., `covenant-redis` (must be unique in your account)
+   - **شبکه خصوصی (Private Network):** Select the **same** network as PostgreSQL
+   - **منابع سخت‌افزاری (Resources):** Start with the smallest plan
+5. Click **راه‌اندازی و نصب دیتابیس** (Create & Install)
+
+**Wait** for the database status to become **آماده به کار** (Ready).
+
+6. After the database is ready, click on it → **نحوه اتصال** (How to Connect)
+7. **Copy the Private Network connection string** — it looks like:
+   ```
+   redis://covenant-redis:6379
+   ```
+
+**Or using Liara CLI:**
+```bash
+liara db:create --platform=redis --id=covenant-redis --network=covenant-net
+```
+
+---
+
+### Phase 5: Create the Next.js Web App
+
+1. In Liara Console, go to **پلتفرم** (Platform) in the sidebar
+2. Click **ایجاد برنامه** (Create App)
+3. Select **NextJS** as the platform
+4. Fill in:
+   - **شناسه (ID):** e.g., `ahd-babol` (this becomes your default URL: `ahd-babol.liara.run`)
+   - **شبکه خصوصی (Private Network):** Select the **same** network
+   - **منابع سخت‌افزاری (Resources):** Start with a reasonable plan
+5. Click **ایجاد برنامه** (Create App)
+
+**Or using Liara CLI:**
+```bash
+liara app:create
+# Then select: platform=next, network=covenant-net
+```
+
+---
+
+### Phase 6: Create the Worker App (Docker)
+
+The worker needs to run as a **separate** Docker-based app on Liara, since it's a background process (not a web server).
+
+1. In Liara Console, go to **پلتفرم** → **ایجاد برنامه**
+2. Select **Docker** as the platform
+3. Fill in:
+   - **شناسه (ID):** e.g., `ahd-worker`
+   - **شبکه خصوصی (Private Network):** Select the **same** network
+   - **منابع سخت‌افزاری (Resources):** A small plan is fine for the worker
+4. Click **ایجاد برنامه**
+
+The worker uses `worker.Dockerfile` (already in the project root) which installs dependencies, copies Prisma client and worker source, then runs `npx tsx worker.ts`.
+
+---
+
+### Phase 7: Set Environment Variables
+
+For each app, you need to set environment variables in Liara Console.
+
+#### Web App (ahd-babol) — Environment Variables
+
+Go to your web app → **تنظیمات** (Settings) → **متغیرهای محیطی** (Environment Variables) and add:
+
+| Key | Value | Notes |
+|-----|-------|-------|
+| `DATABASE_URL` | `postgresql://covenant_pg:PASSWORD@covenant-pg:5432/postgres` | Use **Private Network** host |
+| `REDIS_URL` | `redis://covenant-redis:6379` | Use **Private Network** host |
+
+> ⚠️ **Important:** Use the **private network** hostnames (e.g., `covenant-pg` and `covenant-redis`), NOT the public ones. This ensures secure internal communication.
+
+#### Worker App (ahd-worker) — Environment Variables
+
+Go to your worker app → **تنظیمات** → **متغیرهای محیطی** and add the same:
+
+| Key | Value | Notes |
+|-----|-------|-------|
+| `DATABASE_URL` | `postgresql://covenant_pg:PASSWORD@covenant-pg:5432/postgres` | Same as web app |
+| `REDIS_URL` | `redis://covenant-redis:6379` | Same as web app |
+
+---
+
+### Phase 8: Deploy via GitHub (Recommended)
+
+This is the easiest method — Liara automatically deploys when you push to GitHub.
+
+#### 8.1 Connect Liara to GitHub
+
+1. In Liara Console, click your **profile** (top right) → **حساب کاربری** (Account Settings)
+2. Go to **گیت‌هاب** (GitHub) section
+3. Click **اتصال به گیت‌هاب** (Connect to GitHub)
+4. Authorize Liara to access your GitHub account
+5. Select the repository: `Airya-Xratu/ahd_babol`
+
+#### 8.2 Configure liara.json (Web App)
+
+The project already has a `liara.json` for the Next.js web app:
+
+```json
+{
+  "port": 3000,
+  "next": {
+    "mirror": true
+  }
+}
+```
+
+> ⚠️ **Important:** When deploying via GitHub, do NOT include the `app` or `platform` fields in `liara.json`. Liara auto-detects these.
+
+#### 8.3 Deploy the Web App
+
+1. Go to your web app (`ahd-babol`) in Liara Console
+2. Go to **استقرار** (Deployments) tab
+3. Click **استقرار جدید** (New Deployment)
+4. Select **GitHub** as the source
+5. Choose the repository and branch (`main`)
+6. Click **استقرار** (Deploy)
+7. Wait for the build to complete — you can watch the build logs in real-time
+
+The web app will be available at: `https://ahd-babol.liara.run`
+
+#### 8.4 Deploy the Worker App
+
+1. Go to your worker app (`ahd-worker`) in Liara Console
+2. Go to **استقرار** → **استقرار جدید**
+3. Select **GitHub** as the source
+4. Choose the same repository and branch (`main`)
+5. **Set the Dockerfile path** to `worker.Dockerfile`
+6. Click **استقرار** (Deploy)
+7. Wait for the build to complete
+
+You can check the worker logs in Liara Console to verify it started:
+```
+[Worker] 🚀 Worker ready — listening to queue "signatures"
+```
+
+---
+
+### Phase 8 Alternative: Deploy via Liara CLI
+
+If you prefer the CLI over GitHub integration:
+
+#### Install and Login
+```bash
+npm install -g @liara/cli
+liara login
+```
+
+#### Deploy the Web App
+```bash
+# From the project root directory
+liara deploy --app=ahd-babol --platform=next
+```
+
+#### Deploy the Worker
+```bash
+# Deploy the worker as a Docker app
+liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
+```
+
+---
+
+### Phase 9: Connect a Custom Domain & Enable SSL
+
+#### 9.1 Add Your Domain
+
+1. Go to your web app (`ahd-babol`) in Liara Console
+2. Go to **تنظیمات** (Settings) → **دامنه‌ها** (Domains)
+3. Click **افزودن دامنه** (Add Domain)
+4. Enter your domain name (e.g., `ahd-babol.ir` or `bayat.mydomain.com`)
+5. Click **افزودن**
+
+#### 9.2 Configure DNS Records
+
+Liara will show you the DNS records you need to add at your domain registrar. Typically:
+
+**For a root domain (e.g., `ahd-babol.ir`):**
+| Type | Name | Value |
+|------|------|-------|
+| CNAME | `@` | `ahd-babol.liara.run` |
+
+**For a subdomain (e.g., `bayat.mydomain.com`):**
+| Type | Name | Value |
+|------|------|-------|
+| CNAME | `bayat` | `ahd-babol.liara.run` |
+
+> 💡 Go to your domain registrar's DNS management panel and add the record Liara provides.
+
+#### 9.3 Add www Subdomain (Optional)
+
+1. In the same Domains section, click **افزودن زیردامنه www**
+2. Add a CNAME record:
+   | Type | Name | Value |
+   |------|------|-------|
+   | CNAME | `www` | `ahd-babol.liara.run` |
+
+#### 9.4 Enable SSL Certificate
+
+1. In the Domains section, find your custom domain
+2. Click **تهیه گواهی SSL** (Provision SSL Certificate)
+3. Liara automatically provisions a free SSL certificate (Let's Encrypt)
+4. The SSL certificate will be auto-renewed by Liara — no maintenance needed!
+
+> ✅ That's it! Your site is now live at `https://yourdomain.ir` with HTTPS.
+
+#### 9.5 Disable Default Subdomain (Optional)
+
+If you want to disable the default `ahd-babol.liara.run` URL so only your custom domain works:
+
+1. In the Domains section, find the default subdomain
+2. Click **غیرفعال کردن** (Disable)
+
+---
+
+### Phase 10: Verify Everything Works
+
+1. **Visit your site** at `https://yourdomain.ir`
+2. **Click "ورود و بیعت"** to enter the content page
+3. **Fill the form** and submit
+4. **API returns 202** — job is queued in Redis
+5. **Check worker logs** in Liara Console → worker app → **لاگ‌ها** (Logs)
+   - You should see: `✓ Job xxx — FirstName LastName (nationalCode)`
+6. **Refresh the page** — the count should update (after 10s Redis cache TTL)
+
+---
+
+### 🔧 Liara-Specific Troubleshooting
+
+#### Build Fails on Liara
+
+- Check the build logs in Liara Console
+- Make sure `package.json` has standard `build` and `start` scripts
+- Make sure `next.config.ts` has `output: "standalone"` ✅ (already set)
+- Remove `node_modules` from git — Liara installs dependencies during build
+
+#### Worker Can't Connect to PostgreSQL/Redis
+
+- Verify all services are on the **same private network**
+- Use **private network** hostnames (e.g., `covenant-pg`, `covenant-redis`), not public ones
+- Check environment variables in the worker app settings
+
+#### "Connection refused" Errors
+
+- Make sure the database is **running** (check status in Liara Console)
+- Check that the private network hostname matches the database ID
+- For PostgreSQL: the default database name is `postgres`, not `covenant_db`
+
+#### Custom Domain Not Working
+
+- DNS propagation can take up to **48 hours** (usually much faster)
+- Verify your CNAME record points to the correct `liara.run` address
+- Use `dig yourdomain.ir` or [dnschecker.org](https://dnschecker.org) to check DNS propagation
+
+#### SSL Certificate Won't Provision
+
+- Make sure DNS is fully propagated first
+- Try clicking "تهیه گواهی SSL" again after DNS is confirmed
+- Check that no other service is using port 80 on the domain (needed for ACME challenge)
+
+---
+
+### 💰 Cost Estimation on Liara
+
+| Resource | Plan | Approx. Monthly Cost |
+|----------|------|---------------------|
+| PostgreSQL DB | Small | ~۲۰,۰۰۰ تومان |
+| Redis DB | Small | ~۱۵,۰۰۰ تومان |
+| Next.js Web App | Small | ~۲۰,۰۰۰ تومان |
+| Docker Worker App | Small | ~۲۰,۰۰۰ تومان |
+| **Total** | | **~۷۵,۰۰۰ تومان/month** |
+
+> Prices change. Check [liara.ir](https://liara.ir) for current pricing.
+
+---
+
+### 📈 Scaling on Liara
+
+- **Web App:** Scale vertically (more RAM/CPU) or horizontally (more instances) from the app settings
+- **Worker:** Scale horizontally — just increase the instance count. BullMQ handles multiple workers automatically
+- **Databases:** Scale vertically from the database settings. For PostgreSQL, you can also enable connection pooling
+
+---
+
+## 🔧 Local Development Troubleshooting
 
 ### "Cannot find module lightningcss.darwin-x64.node"
 
