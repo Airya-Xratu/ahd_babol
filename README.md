@@ -542,11 +542,164 @@ Go to your worker app → **تنظیمات** → **متغیرهای محیطی**
 
 ---
 
-### Phase 8: Deploy via GitHub (Recommended)
+### Phase 8: Deploy via Liara CLI
 
-This is the easiest method — Liara automatically deploys when you push to GitHub.
+Since GitHub integration may not always be available, we use the **Liara CLI** to deploy directly from your machine.
 
-#### 8.1 Connect Liara to GitHub
+> 💡 **If GitHub integration becomes available later**, you can switch to it for automatic deploys on push. See the "Phase 8 Alternative: GitHub Integration" section at the end of this guide.
+
+---
+
+#### 8.1 Prerequisite — Generate `package-lock.json`
+
+> ⚠️ **CRITICAL:** Liara's Next.js platform runs `npm ci` during build, which **requires** `package-lock.json`. If your project only has `bun.lock`, the build will fail with `npm error Exit handler never called!`
+
+**On your local machine:**
+
+```bash
+# From the project root directory
+npm install
+```
+
+This generates a `package-lock.json` file. Verify it exists:
+
+```bash
+ls -la package-lock.json
+```
+
+> 💡 **If you already use `npm` locally** and have `package-lock.json`, skip this step.
+>
+> **If you use `bun` locally**, that's fine — just run `npm install` once to generate the lock file. You can continue using `bun` for local development; the `package-lock.json` is only needed by Liara's build system.
+
+**Commit the lock file:**
+
+```bash
+git add package-lock.json
+git commit -m "chore: add package-lock.json for Liara deployment"
+git push
+```
+
+---
+
+#### 8.2 Install and Login to Liara CLI
+
+```bash
+# Install the Liara CLI globally
+npm install -g @liara/cli
+
+# Login to your Liara account
+liara login
+
+# Verify you're logged in
+liara whoami
+```
+
+> 💡 The CLI will open a browser for authentication. If you're on a headless server, use `liara login --apiKey=YOUR_API_KEY` instead (get your API key from Liara Console → Profile → API Keys).
+
+---
+
+#### 8.3 Deploy the Next.js Web App
+
+```bash
+# From the project root directory
+liara deploy --app=ahd-babol --platform=next
+```
+
+**What happens during deployment:**
+1. Liara CLI uploads your project files (compressed)
+2. Liara's build server runs `npm ci` to install dependencies
+3. Then runs `npm run build` → `next build` (with `output: "standalone"`)
+4. Starts the app with `node .next/standalone/server.js` on port 3000
+
+**Watch the build logs** in Liara Console → `ahd-babol` → **استقرار** (Deployments).
+
+**When it succeeds**, your web app is live at: `https://ahd-babol.liara.run`
+
+> 💡 **First deployment takes 2-5 minutes** (installing all dependencies + building Next.js). Subsequent deploys are faster thanks to caching.
+
+**Common build errors:**
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `npm ci` command failed | Missing `package-lock.json` | Run `npm install` locally, then deploy again |
+| `npm error Exit handler never called!` | Corrupted or missing lock file | Delete `node_modules` + `package-lock.json`, run `npm install` fresh |
+| Out of memory (OOM) | Earth plan (0.5 GB) is too small for Next.js build | Upgrade to **Mars** (1 GB) plan |
+| Build succeeds but 502 on visit | Missing `output: "standalone"` in next.config.ts | Already set ✅ — check env vars |
+
+---
+
+#### 8.4 Deploy the Worker App (Docker)
+
+The worker is a **separate Docker app** that runs `worker.ts` in the background. It reads jobs from Redis and writes to PostgreSQL.
+
+```bash
+# Deploy the worker as a Docker app
+liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
+```
+
+**What the `worker.Dockerfile` does:**
+
+```
+┌──────────────────────────────────────────────┐
+│ Stage 1: deps                                │
+│   COPY package.json + package-lock.json      │
+│   npm ci --omit=dev  (production deps only)  │
+├──────────────────────────────────────────────┤
+│ Stage 2: builder                             │
+│   npm ci  (all deps including dev)           │
+│   COPY prisma/ → npx prisma generate         │
+├──────────────────────────────────────────────┤
+│ Stage 3: runner (final image)                │
+│   COPY node_modules from deps                │
+│   COPY .prisma/ from builder                 │
+│   COPY worker.ts + prisma/ + package.json    │
+│   npm install -g tsx                         │
+│   CMD ["npx", "tsx", "worker.ts"]            │
+└──────────────────────────────────────────────┘
+```
+
+**Verify the worker is running** — check logs in Liara Console → `ahd-worker` → **لاگ‌ها** (Logs). You should see:
+
+```
+[Worker] Connected to Redis
+[Worker] 🚀 Worker ready — listening to queue "signatures" (concurrency: 50)
+[Worker] Redis: redis://covenant-redis:6379
+[Worker] Database: postgresql://covenant_pg:****@covenant-pg:5432/postgres
+```
+
+> ⚠️ **If you see connection errors** in the worker logs, check:
+> 1. Are all services on the **same private network**?
+> 2. Are env vars using **private network** hostnames (e.g., `covenant-pg` not the public host)?
+> 3. Is the PostgreSQL database **running** (check status in Liara Console)?
+
+---
+
+#### 8.5 Deploy Summary & Cheat Sheet
+
+```bash
+# ─── One-time setup ───────────────────────────
+npm install -g @liara/cli     # Install CLI
+liara login                   # Login
+npm install                   # Generate package-lock.json (if missing)
+
+# ─── Deploy web app ──────────────────────────
+liara deploy --app=ahd-babol --platform=next
+
+# ─── Deploy worker ───────────────────────────
+liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
+
+# ─── Check status ────────────────────────────
+liara app:logs --app=ahd-babol       # Web app logs
+liara app:logs --app=ahd-worker      # Worker logs
+```
+
+---
+
+### Phase 8 Alternative: Deploy via GitHub Integration
+
+> 💡 Use this method **only** if GitHub integration becomes available. It provides automatic deploys on every git push.
+
+#### Connect Liara to GitHub
 
 1. In Liara Console, click your **profile** (top right) → **حساب کاربری** (Account Settings)
 2. Go to **گیت‌هاب** (GitHub) section
@@ -554,22 +707,7 @@ This is the easiest method — Liara automatically deploys when you push to GitH
 4. Authorize Liara to access your GitHub account
 5. Select the repository: `Airya-Xratu/ahd_babol`
 
-#### 8.2 Configure liara.json (Web App)
-
-The project already has a `liara.json` for the Next.js web app:
-
-```json
-{
-  "port": 3000,
-  "next": {
-    "mirror": true
-  }
-}
-```
-
-> ⚠️ **Important:** When deploying via GitHub, do NOT include the `app` or `platform` fields in `liara.json`. Liara auto-detects these.
-
-#### 8.3 Deploy the Web App
+#### Deploy the Web App via GitHub
 
 1. Go to your web app (`ahd-babol`) in Liara Console
 2. Go to **استقرار** (Deployments) tab
@@ -577,11 +715,8 @@ The project already has a `liara.json` for the Next.js web app:
 4. Select **GitHub** as the source
 5. Choose the repository and branch (`main`)
 6. Click **استقرار** (Deploy)
-7. Wait for the build to complete — you can watch the build logs in real-time
 
-The web app will be available at: `https://ahd-babol.liara.run`
-
-#### 8.4 Deploy the Worker App
+#### Deploy the Worker via GitHub
 
 1. Go to your worker app (`ahd-worker`) in Liara Console
 2. Go to **استقرار** → **استقرار جدید**
@@ -589,36 +724,8 @@ The web app will be available at: `https://ahd-babol.liara.run`
 4. Choose the same repository and branch (`main`)
 5. **Set the Dockerfile path** to `worker.Dockerfile`
 6. Click **استقرار** (Deploy)
-7. Wait for the build to complete
 
-You can check the worker logs in Liara Console to verify it started:
-```
-[Worker] 🚀 Worker ready — listening to queue "signatures"
-```
-
----
-
-### Phase 8 Alternative: Deploy via Liara CLI
-
-If you prefer the CLI over GitHub integration:
-
-#### Install and Login
-```bash
-npm install -g @liara/cli
-liara login
-```
-
-#### Deploy the Web App
-```bash
-# From the project root directory
-liara deploy --app=ahd-babol --platform=next
-```
-
-#### Deploy the Worker
-```bash
-# Deploy the worker as a Docker app
-liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
-```
+> ⚠️ **Important:** When deploying via GitHub, do NOT include the `app` or `platform` fields in `liara.json`. Liara auto-detects these.
 
 ---
 
@@ -688,12 +795,15 @@ If you want to disable the default `ahd-babol.liara.run` URL so only your custom
 
 ### 🔧 Liara-Specific Troubleshooting
 
-#### Build Fails on Liara
+#### Build Fails on Liara (`npm ci` error)
 
-- Check the build logs in Liara Console
+- **Most common cause:** Missing `package-lock.json` — Liara's Next.js platform runs `npm ci` which requires it
+- **Fix:** Run `npm install` locally to generate `package-lock.json`, then deploy again
 - Make sure `package.json` has standard `build` and `start` scripts
 - Make sure `next.config.ts` has `output: "standalone"` ✅ (already set)
 - Remove `node_modules` from git — Liara installs dependencies during build
+- If `npm ci` still fails after generating lock file, try: `rm -rf node_modules package-lock.json && npm install`
+- **Earth plan (0.5 GB RAM)** may cause OOM during Next.js build — upgrade to **Mars** (1 GB)
 
 #### Worker Can't Connect to PostgreSQL/Redis
 

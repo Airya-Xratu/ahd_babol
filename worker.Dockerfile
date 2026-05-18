@@ -1,6 +1,8 @@
 # ─── BullMQ Worker Dockerfile for Liara ───
 # This Dockerfile creates a standalone image for the worker process
 # that consumes jobs from the BullMQ queue and writes to PostgreSQL.
+#
+# Deploy with: liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
 
 FROM node:22-alpine AS base
 
@@ -12,14 +14,16 @@ FROM base AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+# If package-lock.json exists, use npm ci (faster, deterministic).
+# If not, fall back to npm install.
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
 # ─── Builder ───
 FROM base AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY prisma ./prisma/
 RUN npx prisma generate
@@ -47,7 +51,7 @@ COPY package.json ./package.json
 # Install tsx for running TypeScript
 RUN npm install -g tsx
 
-# Health check
+# Health check — verify worker process is running
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD pgrep -f "worker.ts" || exit 1
 
