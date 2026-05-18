@@ -1,37 +1,43 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { cache, CACHE_KEYS, CACHE_TTL } from "@/lib/cache";
+import { safeRedisGet, safeRedisSet } from "@/lib/redis";
+
+// Redis cache key and TTL
+const CACHE_KEY = "covenant:signature_count";
+const CACHE_TTL_SECONDS = 10; // 10 seconds
+
+interface CountResult {
+  confirmed: number;
+}
 
 export async function GET() {
   try {
-    // Check cache first
-    const cached = cache.get<number>(CACHE_KEYS.TOTAL_SIGNATURES);
-    if (cached !== null) {
-      return NextResponse.json({ count: cached });
+    // Check Redis cache first (with safe fallback)
+    const cached = await safeRedisGet(CACHE_KEY);
+    if (cached) {
+      const parsed: CountResult = JSON.parse(cached);
+      return NextResponse.json({
+        confirmed: parsed.confirmed,
+        count: parsed.confirmed,
+      });
     }
 
-    // Count confirmed signatures + pending ones (they are queued and will be processed)
-    const [confirmed, pending] = await Promise.all([
-      db.signature.count(),
-      db.pendingSignature.count({
-        where: { status: { in: ["PENDING", "PROCESSING"] } },
-      }),
-    ]);
+    // Cache miss or Redis unavailable — query PostgreSQL directly
+    const confirmed = await db.signature.count();
 
-    const total = confirmed + pending;
+    const result: CountResult = { confirmed };
 
-    // Store in cache with 10-second TTL
-    cache.set(CACHE_KEYS.TOTAL_SIGNATURES, total, CACHE_TTL.SIGNATURE_COUNT);
+    // Try to store in Redis (won't fail if Redis is down)
+    await safeRedisSet(CACHE_KEY, JSON.stringify(result), "EX", CACHE_TTL_SECONDS);
 
     return NextResponse.json({
-      count: total,
       confirmed,
-      pending,
+      count: confirmed,
     });
   } catch (error) {
     console.error("Error fetching signature count:", error);
     return NextResponse.json(
-      { message: "خطا در دریافت تعداد امضاها" },
+      { message: "خطا در دریافت تعداد بیعت‌ها" },
       { status: 500 }
     );
   }

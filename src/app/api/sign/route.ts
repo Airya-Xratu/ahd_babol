@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { signatureQueue } from "@/lib/queue";
 import { signatureSchema } from "@/lib/validators";
 
 export async function POST(request: Request) {
@@ -29,17 +29,13 @@ export async function POST(request: Request) {
 
     const { firstName, lastName, nationalCode, mobile } = result.data;
 
-    // FAST PATH: Just insert into the queue table and return immediately.
-    // No duplicate checks here — the worker handles that when processing.
-    // This makes the API as fast as possible under high load.
-    await db.pendingSignature.create({
-      data: {
-        firstName,
-        lastName,
-        nationalCode,
-        mobile,
-        status: "PENDING",
-      },
+    // FAST PATH: Add job to BullMQ queue (Redis only — no DB write)
+    // This is even faster than the old DB insert since Redis is in-memory
+    await signatureQueue.add("sign", {
+      firstName,
+      lastName,
+      nationalCode,
+      mobile,
     });
 
     // Return 202 Accepted — request is queued, worker will process it
@@ -49,9 +45,17 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("Error queueing signature:", error);
+
+    // If Redis is unavailable, return a specific error
+    const errorMessage =
+      error && typeof error === "object" && "code" in error &&
+      (error as { code: string }).code === "ECONNREFUSED"
+        ? "سرویس صف موقتاً در دسترس نیست. لطفاً دوباره تلاش کنید"
+        : "خطایی در سرور رخ داده است. لطفاً دوباره تلاش کنید";
+
     return NextResponse.json(
-      { message: "خطایی در سرور رخ داده است. لطفاً دوباره تلاش کنید" },
-      { status: 500 }
+      { message: errorMessage },
+      { status: 503 }
     );
   }
 }

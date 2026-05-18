@@ -36,6 +36,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.local.example
 
 # vercel
 .vercel
@@ -60,3 +61,10 @@ server.log
 # Sandbox internals
 .zscripts/
 worklog.md
+
+# Old architecture (replaced by BullMQ)
+mini-services/
+Caddyfile
+
+# Old SQLite database
+db/

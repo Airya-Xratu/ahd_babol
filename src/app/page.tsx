@@ -12,21 +12,11 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Clock,
-  Activity,
 } from "lucide-react";
-
-interface CountData {
-  count: number;
-  confirmed: number;
-  pending: number;
-}
 
 export default function Home() {
   const [showContent, setShowContent] = useState(false);
   const [signatureCount, setSignatureCount] = useState(0);
-  const [confirmedCount, setConfirmedCount] = useState(0);
-  const [pendingCount, setPendingCount] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -41,15 +31,16 @@ export default function Home() {
   // Form validation
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const SIGNATURE_DISPLAY_THRESHOLD = 5000;
+  const showSignatureCount = signatureCount >= SIGNATURE_DISPLAY_THRESHOLD;
+
   // Fetch signature count
   const fetchCount = useCallback(async () => {
     try {
       const res = await fetch("/api/count");
       if (res.ok) {
-        const data: CountData = await res.json();
-        setSignatureCount(data.count);
-        setConfirmedCount(data.confirmed);
-        setPendingCount(data.pending);
+        const data = await res.json();
+        setSignatureCount(data.confirmed ?? data.count ?? 0);
       }
     } catch {
       // Silently fail
@@ -119,10 +110,8 @@ export default function Home() {
         setNationalCode("");
         setMobile("");
         setErrors({});
-        setSignatureCount((prev) => prev + 1);
-        setPendingCount((prev) => prev + 1);
-        // Refresh count from server
-        fetchCount();
+        // Refresh count from server after a short delay (worker needs time)
+        setTimeout(fetchCount, 2000);
       } else {
         setSubmitStatus("error");
         setErrorMessage(data.message || "خطایی رخ داده است");
@@ -148,8 +137,8 @@ export default function Home() {
           >
             {/* Background Image */}
             <Image
-              src="/background.jpg"
-              alt="پس‌زمینه عهدنامه"
+              src="/background.png"
+              alt="پس‌زمینه بیعت‌نامه"
               fill
               className="object-cover"
               priority
@@ -165,7 +154,7 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.8 }}
               >
-                عهدنامه همبستگی ملی
+                بیعت با ولی امر مسلمین
               </motion.h1>
 
               <motion.p
@@ -174,7 +163,7 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6, duration: 0.8 }}
               >
-                صدای خود را با امضا بلند کنید
+                بیعت‌نامه مردم شهرستان بابل با امام‌المسلمین، حضرت آیت‌الله حاج سید مجتبی حسینی خامنه‌ای
               </motion.p>
 
               <motion.div
@@ -190,19 +179,21 @@ export default function Home() {
                   }}
                 >
                   <PenLine className="ml-2 h-6 w-6" />
-                  ورود و امضا
+                  ورود و بیعت
                 </Button>
               </motion.div>
 
-              <motion.div
-                className="flex items-center gap-2 text-white/60 text-sm"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 1.5, duration: 0.6 }}
-              >
-                <Users className="h-4 w-4" />
-                <span>تاکنون {signatureCount.toLocaleString("fa-IR")} نفر امضا کرده‌اند</span>
-              </motion.div>
+              {showSignatureCount && (
+                <motion.div
+                  className="flex items-center gap-2 text-white/60 text-sm"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 1.5, duration: 0.6 }}
+                >
+                  <Users className="h-4 w-4" />
+                  <span>تاکنون {(signatureCount ?? 0).toLocaleString("fa-IR")} نفر بیعت کرده‌اند</span>
+                </motion.div>
+              )}
             </div>
           </motion.div>
         )}
@@ -215,47 +206,37 @@ export default function Home() {
         animate={showContent ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
       >
-        {/* Header Image */}
-        <header className="relative w-full h-48 md:h-72 overflow-hidden">
+        {/* Header Image — no text overlay, image has its own text */}
+        <header className="relative w-full h-48 md:h-64 overflow-hidden">
           <Image
-            src="/header.jpg"
-            alt="سربرگ عهدنامه"
+            src="/header.png"
+            alt="سربرگ بیعت‌نامه"
             fill
             className="object-cover"
             priority
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/20 to-black/60" />
-          <div className="absolute bottom-0 left-0 right-0 p-6 md:p-10">
-            <h1 className="text-2xl md:text-4xl font-bold text-white drop-shadow-lg">
-              عهدنامه همبستگی ملی
-            </h1>
-            <p className="text-white/70 mt-2 text-sm md:text-base">
-              با امضای خود، تغییر را آغاز کنید
-            </p>
-          </div>
         </header>
 
-        {/* Signature Count Bar */}
+        {/* Gradient Bar — always visible; counts hidden when < 5k */}
         <div className="bg-gradient-to-l from-emerald-600 to-teal-700 text-white py-3 px-6">
           <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              <span className="font-medium">
-                تعداد امضاها: {signatureCount.toLocaleString("fa-IR")}
-              </span>
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              {pendingCount > 0 && (
-                <span className="flex items-center gap-1 text-amber-200">
-                  <Clock className="h-3.5 w-3.5 animate-pulse" />
-                  در صف: {pendingCount.toLocaleString("fa-IR")}
+            {showSignatureCount ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  <span className="font-medium">
+                    تعداد بیعت‌ها: {(signatureCount ?? 0).toLocaleString("fa-IR")}
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <PenLine className="h-5 w-5" />
+                <span className="font-medium">
+                  بیعت با ولی امر مسلمین
                 </span>
-              )}
-              <span className="flex items-center gap-1 text-emerald-100">
-                <Activity className="h-3.5 w-3.5" />
-                تأیید شده: {confirmedCount.toLocaleString("fa-IR")}
-              </span>
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -264,21 +245,62 @@ export default function Home() {
           <div className="bg-card border border-border rounded-2xl p-6 md:p-10 shadow-sm">
             <h2 className="text-xl md:text-2xl font-bold text-foreground mb-6 flex items-center gap-3">
               <span className="h-8 w-1.5 bg-emerald-500 rounded-full" />
-              متن عهدنامه
+              متن بیعت‌نامه
             </h2>
-            <div className="text-muted-foreground leading-8 text-sm md:text-base space-y-4">
-              <p>
-                ما امضاکنندگان این عهدنامه، با آگاهی کامل از مسئولیت‌های فردی و جمعی خود، اعلام می‌کنیم که به اصول بنیادین حقوق بشر، آزادی‌های مشروع و کرامت انسانی پایبندیم.
+            <div className="text-muted-foreground leading-9 text-sm md:text-base space-y-3">
+              <p className="text-center text-foreground font-medium text-base md:text-lg mb-6">
+                بسم‌الله‌الرحمن‌الرحیم
               </p>
               <p>
-                ما معتقدیم که هر فرد حق دارد در فضایی آزاد و امن زندگی کند، از فرصت‌های برابر بهره‌مند شود و بدون ترس از تبعیض یا سرکوب، نظر خود را بیان نماید.
+                🔹 خدای علیم و حکیم را شاکریم که نعمت خود را بر ملت ایران و مظلومان عالم تمام نمود.
               </p>
               <p>
-                ما تعهد می‌دهیم که برای تحقق عدالت اجتماعی، برابری حقوق و حفظ محیط زیست تلاش کنیم و از هیچ کوششی برای ساختن جامعه‌ای بهتر و انسانی‌تر فروگذار نکنیم.
+                🔹 شهادت قائد امت و عزیز ملت، شهید صائم و قائم و تالی قرآنِ دهم رمضان، حضرت شهید و شاهد، آیت‌الله العظمی امام حاج سید علی خامنه‌ای(قدس‌الله نفسه‌الزکیه)، قلوب همه ما را جریحه‌دار نمود.
               </p>
               <p>
-                با امضای این عهدنامه، صدای خود را به صدای هزاران نفر دیگر می‌پیوندیم و اعلام می‌کنیم که تغییر از ما آغاز می‌شود.
+                🔹 گویا دوباره همچون عهد رسول (ص)، همگی یتیم و بی‌پناه و بی‌کس شدیم.
+                بیت‌الاحزان دل‌های ما، غمی را تجربه نمود از جنس غم ارتحال نبوی و شهادت علوی.
               </p>
+              <p>
+                🔹 اما در دل لیلةالقدر، مژده ظفر و پیروزی رسید و مرهمی بر دل‌ها شد. مژده آمد که:
+              </p>
+              <p className="text-center text-foreground font-bold text-base md:text-lg py-2">
+                &ldquo;بعد علی، مجتباست<br/>
+                وارث روح خداست&rdquo;
+              </p>
+              <p>
+                🔹 ای خلف خامنه‌ای عزیز، امام سید مجتبی خامنه‌ای!<br/>
+                ما مردم دارالمؤمنین بابل، در شب شهادت جوادالائمه علیه‌السلام، از بن دل و جان و با تمام وجود با شما بیعت می‌کنیم و پیمان می‌بندیم که:
+              </p>
+              <p className="text-center text-foreground font-bold text-base md:text-lg py-2">
+                &ldquo;خونی که در رگ ماست<br/>
+                هدیه به رهبر ماست&rdquo;
+              </p>
+              <p>
+                🔹 ای خون‌خواه رهبر شهید و ملت مظلوم و کودکان بی‌گناه!<br/>
+                تا زمانی که شما امر بفرمایید، عمارگونه در میدان هستیم.
+              </p>
+              <p>
+                🔅 ای خامنه‌ای عزیز، ما با حضرتعالی به‌عنوان وصیّ امام شهید (رحمة الله) و نایب امام زمان (عَجّلَ الله تَعٰالیٰ فَرَجَه) تجدید بیعت می‌کنیم و تا بذل جان در راه اجرای فرامین شما ایستاده‌ایم و فریاد بر‌می‌آوریم:
+              </p>
+              <p className="text-center text-foreground font-bold text-base md:text-lg py-2">
+                &ldquo;لبیک یا خامنه‌ای<br/>
+                لبیک یا حسین است&rdquo;
+              </p>
+              <p>
+                🔹 و همچون سید مقاومت، شهید سید حسن نصرالله، در چهله‌ی دوم بعثت امّت، که پیش‌گویی رهبر شهیدمان است، می‌گوییم:
+              </p>
+              <p className="text-center text-foreground font-bold text-base md:text-lg py-2">
+                &ldquo;ما تراکناک یابن‌الحسین&rdquo;
+              </p>
+              <div className="mt-8 pt-4 border-t border-border text-center space-y-1">
+                <p className="text-foreground font-medium">
+                  بعثت مردم شهرستان دارالمؤمنین بابل
+                </p>
+                <p className="text-muted-foreground">
+                  بهار ۱۴۰۵
+                </p>
+              </div>
             </div>
           </div>
         </section>
@@ -291,10 +313,10 @@ export default function Home() {
           <div className="bg-card border border-border rounded-2xl p-6 md:p-10 shadow-sm">
             <h2 className="text-xl md:text-2xl font-bold text-foreground mb-2 flex items-center gap-3">
               <PenLine className="h-6 w-6 text-emerald-500" />
-              فرم امضا
+              فرم بیعت
             </h2>
             <p className="text-muted-foreground text-sm mb-8">
-              اطلاعات خود را وارد کنید تا امضای شما ثبت شود
+              اطلاعات خود را وارد کنید تا بیعت شما ثبت شود
             </p>
 
             {/* Status Messages */}
@@ -307,7 +329,7 @@ export default function Home() {
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
                 <div>
                   <span className="font-medium">درخواست شما دریافت شد و در صف پردازش قرار گرفت.</span>
-                  <p className="text-xs mt-1 text-emerald-600">امضای شما پس از تأیید، به شمارنده اضافه خواهد شد.</p>
+                  <p className="text-xs mt-1 text-emerald-600">بیعت شما پس از تأیید، به شمارنده اضافه خواهد شد.</p>
                 </div>
               </motion.div>
             )}
@@ -433,7 +455,7 @@ export default function Home() {
                 ) : (
                   <>
                     <PenLine className="ml-2 h-5 w-5" />
-                    امضای عهدنامه
+                    ثبت بیعت
                   </>
                 )}
               </Button>
@@ -444,7 +466,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="mt-auto bg-muted/50 border-t border-border py-6 text-center">
           <p className="text-muted-foreground text-sm">
-            پلتفرم امضای عهدنامه | تمامی حقوق محفوظ است
+            پلتفرم بیعت‌نامه بابل | تمامی حقوق محفوظ است
           </p>
         </footer>
       </motion.div>
@@ -458,7 +480,7 @@ export default function Home() {
             exit={{ opacity: 0, scale: 0 }}
             onClick={scrollToForm}
             className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-gradient-to-bl from-emerald-500 to-teal-600 text-white shadow-xl shadow-emerald-500/30 flex items-center justify-center hover:scale-110 active:scale-95 transition-transform duration-200"
-            aria-label="رفتن به فرم امضا"
+            aria-label="رفتن به فرم بیعت"
           >
             <PenLine className="h-6 w-6" />
           </motion.button>
