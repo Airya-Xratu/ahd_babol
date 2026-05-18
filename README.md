@@ -632,12 +632,55 @@ liara deploy --app=ahd-babol --platform=next
 
 The worker is a **separate Docker app** that runs `worker.ts` in the background. It reads jobs from Redis and writes to PostgreSQL.
 
+You have **two options** to deploy the worker:
+
+---
+
+##### Option A: Upload ZIP File (Recommended — Easiest)
+
+This method packages only the files the worker needs into a tiny ZIP, then uploads it via Liara Console.
+
+**Step 1: Create the deployment ZIP**
+
+```bash
+# From the project root directory
+./build-worker-zip.sh
+```
+
+This creates `worker-deploy.zip` (~8 KB) containing only:
+- `worker.Dockerfile` — the Docker build instructions
+- `worker.ts` — the worker source code
+- `package.json` — dependency list
+- `package-lock.json` — lock file (if exists)
+- `prisma/schema.prisma` — database schema
+
+> 💡 The ZIP is tiny because it only includes worker files — no Next.js code, no `src/`, no `public/`.
+
+**Step 2: Upload to Liara Console**
+
+1. Go to [Liara Console](https://console.liara.ir) → your worker app (`ahd-worker`)
+2. Go to **استقرار** (Deployments) tab
+3. Click **استقرار جدید** (New Deployment)
+4. Select **آپلود سورس‌کد** (Upload Source Code)
+5. Upload the `worker-deploy.zip` file
+6. In the **Dockerfile** field, enter: `worker.Dockerfile`
+7. Click **استقرار** (Deploy)
+8. Wait for the build to complete (2-4 minutes on first deploy)
+
+---
+
+##### Option B: Deploy via Liara CLI
+
 ```bash
 # Deploy the worker as a Docker app
 liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
 ```
 
-**What the `worker.Dockerfile` does:**
+> ⚠️ This uploads the entire project (~6 MB). Option A is faster since it only uploads the worker files.
+
+---
+
+**What the `worker.Dockerfile` does (3-stage build):**
 
 ```
 ┌──────────────────────────────────────────────┐
