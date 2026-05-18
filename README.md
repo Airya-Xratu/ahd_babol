@@ -319,6 +319,65 @@ You will create **4 resources** on Liara:
 
 ---
 
+### Liara Plan Reference (Resource Tiers)
+
+Liara uses planet-named plans for both apps and databases. Here are all available tiers:
+
+#### App (PaaS) Plans
+
+| Plan | نام فارسی | RAM | CPU | Disk (SSD) | Monthly Price | Hourly Price |
+|------|-----------|-----|-----|------------|---------------|--------------|
+| Mercury | عطارد (رایگان) | 0.128 GB | 0.125 core | None | **Free** | Free |
+| Earth | زمین (اقتصادی) | 0.5 GB | 0.5 core | 5 GB | ۳۵۰,۰۰۰ تومان | ۴۸۶ تومان |
+| Mars | مریخ (اقتصادی پلاس) | 1 GB | 1 core | 10 GB | ۶۰۰,۰۰۰ تومان | ۸۳۳ تومان |
+| Jupiter | مشتری (استاندارد) | 2 GB | 1 core | 20 GB | ۱,۰۵۰,۰۰۰ تومان | ۱,۴۵۸ تومان |
+| Saturn | زحل (استاندارد پلاس) | 4 GB | 2 cores | 40 GB | ۱,۹۰۰,۰۰۰ تومان | ۲,۶۳۸ تومان |
+| Uranus | اورانوس (حرفه‌ای) | 8 GB | 4 cores | 80 GB | ۳,۳۰۰,۰۰۰ تومان | ۴,۵۸۳ تومان |
+| Neptune | نپتون (حرفه‌ای پلاس) | 16 GB | 8 cores | 160 GB | — | — |
+| Pluto | پلوتون (اکستریم) | 32 GB | 16 cores | 320 GB | — | — |
+
+#### Database (DBaaS) Plans
+
+| Plan | نام فارسی | RAM | CPU | Disk (SSD) | Monthly Price | Hourly Price |
+|------|-----------|-----|-----|------------|---------------|--------------|
+| Mercury | عطارد (رایگان) | 0.128 GB | 0.125 core | 1.25 GB | **Free** | Free |
+| Earth | زمین (اقتصادی) | 0.5 GB | 0.5 core | 5 GB | ۳۵۰,۰۰۰ تومان | ۴۸۶ تومان |
+| Mars | مریخ (اقتصادی پلاس) | 1 GB | 1 core | 10 GB | ۶۰۰,۰۰۰ تومان | ۸۳۳ تومان |
+| Jupiter | مشتری (استاندارد) | 2 GB | 1 core | 20 GB | ۱,۰۵۰,۰۰۰ تومان | ۱,۴۵۸ تومان |
+| Saturn | زحل (استاندارد پلاس) | 4 GB | 2 cores | 40 GB | ۱,۹۰۰,۰۰۰ تومان | ۲,۶۳۸ تومان |
+| Uranus | اورانوس (حرفه‌ای) | 8 GB | 4 cores | 80 GB | ۳,۳۰۰,۰۰۰ تومان | ۴,۵۸۳ تومان |
+| Neptune | نپتون (حرفه‌ای پلاس) | 16 GB | 8 cores | 160 GB | — | — |
+| Pluto | پلوتون (اکستریم) | 32 GB | 16 cores | 320 GB | — | — |
+
+> 💡 **Note:** Prices may change. Always verify at [liara.ir/pricing](https://liara.ir/pricing).
+
+#### Recommended Plans for This Project
+
+Based on the Covenant Signing Platform's architecture and expected load (up to 50,000 requests/minute):
+
+| Service | Minimum Plan | Recommended Plan | Why |
+|---------|-------------|------------------|-----|
+| **PostgreSQL** | 🌍 Earth (0.5 GB) | 🔴 **Mars** (1 GB RAM, 1 core, 10 GB SSD) | Stores all signatures; needs RAM for query caching, disk for data growth. Earth is too tight for production. |
+| **Redis** | 🌍 Earth (0.5 GB) | 🌍 **Earth** (0.5 GB RAM, 0.5 core, 5 GB SSD) | Only stores job queue + 10s count cache — very lightweight. Earth is sufficient even at scale. |
+| **Next.js Web App** | 🌍 Earth (0.5 GB) | 🔴 **Mars** (1 GB RAM, 1 core, 10 GB SSD) | Next.js standalone needs ~300MB at idle; with concurrent requests, 1GB provides headroom. |
+| **Docker Worker** | 🌍 Earth (0.5 GB) | 🌍 **Earth** (0.5 GB RAM, 0.5 core, 5 GB SSD) | Worker is lightweight — reads from Redis, writes to PostgreSQL. 0.5 GB is enough for 50 concurrent jobs. |
+
+**Minimum viable setup (budget-friendly):** All services on Earth plan = ~۱,۴۰۰,۰۰۰ تومان/month
+
+**Recommended production setup:**
+```
+PostgreSQL  → Mars (1 GB)      → ۶۰۰,۰۰۰ تومان/month
+Redis       → Earth (0.5 GB)   → ۳۵۰,۰۰۰ تومان/month
+Web App     → Mars (1 GB)      → ۶۰۰,۰۰۰ تومان/month
+Worker App  → Earth (0.5 GB)   → ۳۵۰,۰۰۰ تومان/month
+─────────────────────────────────────────────────────────
+Total                           → ۱,۹۰۰,۰۰۰ تومان/month
+```
+
+> 💡 **Scaling tip:** If the web app gets slow under load, upgrade it to **Jupiter** (2 GB). If the worker falls behind on processing, add more worker instances (horizontal scaling) rather than upgrading the plan — BullMQ handles multiple workers automatically.
+
+---
+
 ### Phase 1: Create a Liara Account
 
 1. Go to [https://liara.ir](https://liara.ir) and click **ثبت‌نام** (Sign Up)
@@ -361,7 +420,7 @@ liara network create
    - **نسخه (Version):** Choose the latest (e.g., 16)
    - **شناسه (ID):** e.g., `covenant-pg` (must be unique in your account)
    - **شبکه خصوصی (Private Network):** Select the network you created in Phase 2
-   - **منابع سخت‌افزاری (Resources):** Start with the smallest plan; you can scale up later
+   - **منابع سخت‌افزاری (Resources):** 🔴 **Recommended: Mars (مریخ)** — 1 GB RAM, 1 core CPU, 10 GB SSD (~۶۰۰,۰۰۰ تومان/month). This gives PostgreSQL enough RAM for query caching and disk for signature data to grow.
 5. Click **راه‌اندازی و نصب دیتابیس** (Create & Install)
 
 **Wait** for the database status to become **آماده به کار** (Ready).
@@ -404,7 +463,7 @@ liara db:create --platform=postgres --id=covenant-pg --network=covenant-net
    - **نسخه (Version):** Choose the latest (e.g., 7)
    - **شناسه (ID):** e.g., `covenant-redis` (must be unique in your account)
    - **شبکه خصوصی (Private Network):** Select the **same** network as PostgreSQL
-   - **منابع سخت‌افزاری (Resources):** Start with the smallest plan
+   - **منابع سخت‌افزاری (Resources):** 🌍 **Recommended: Earth (زمین)** — 0.5 GB RAM, 0.5 core CPU, 5 GB SSD (~۳۵۰,۰۰۰ تومان/month). Redis only stores the BullMQ job queue and a 10-second count cache — very lightweight. Earth is sufficient even under high load.
 5. Click **راه‌اندازی و نصب دیتابیس** (Create & Install)
 
 **Wait** for the database status to become **آماده به کار** (Ready).
@@ -430,7 +489,7 @@ liara db:create --platform=redis --id=covenant-redis --network=covenant-net
 4. Fill in:
    - **شناسه (ID):** e.g., `ahd-babol` (this becomes your default URL: `ahd-babol.liara.run`)
    - **شبکه خصوصی (Private Network):** Select the **same** network
-   - **منابع سخت‌افزاری (Resources):** Start with a reasonable plan
+   - **منابع سخت‌افزاری (Resources):** 🔴 **Recommended: Mars (مریخ)** — 1 GB RAM, 1 core CPU, 10 GB SSD (~۶۰۰,۰۰۰ تومان/month). Next.js standalone needs ~300MB at idle; 1 GB gives comfortable headroom for concurrent API requests.
 5. Click **ایجاد برنامه** (Create App)
 
 **Or using Liara CLI:**
@@ -450,7 +509,7 @@ The worker needs to run as a **separate** Docker-based app on Liara, since it's 
 3. Fill in:
    - **شناسه (ID):** e.g., `ahd-worker`
    - **شبکه خصوصی (Private Network):** Select the **same** network
-   - **منابع سخت‌افزاری (Resources):** A small plan is fine for the worker
+   - **منابع سخت‌افزاری (Resources):** 🌍 **Recommended: Earth (زمین)** — 0.5 GB RAM, 0.5 core CPU, 5 GB SSD (~۳۵۰,۰۰۰ تومان/month). The worker is lightweight — it reads from Redis and writes to PostgreSQL. 0.5 GB is enough for 50 concurrent jobs. If you need more throughput, scale horizontally (add more instances) rather than upgrading the plan.
 4. Click **ایجاد برنامه**
 
 The worker uses `worker.Dockerfile` (already in the project root) which installs dependencies, copies Prisma client and worker source, then runs `npx tsx worker.ts`.
@@ -664,15 +723,41 @@ If you want to disable the default `ahd-babol.liara.run` URL so only your custom
 
 ### 💰 Cost Estimation on Liara
 
-| Resource | Plan | Approx. Monthly Cost |
-|----------|------|---------------------|
-| PostgreSQL DB | Small | ~۲۰,۰۰۰ تومان |
-| Redis DB | Small | ~۱۵,۰۰۰ تومان |
-| Next.js Web App | Small | ~۲۰,۰۰۰ تومان |
-| Docker Worker App | Small | ~۲۰,۰۰۰ تومان |
-| **Total** | | **~۷۵,۰۰۰ تومان/month** |
+#### Minimum Viable Setup (Budget-Friendly)
 
-> Prices change. Check [liara.ir](https://liara.ir) for current pricing.
+All services on **Earth (زمین)** plan:
+
+| Resource | Plan | RAM | Monthly Cost |
+|----------|------|-----|-------------|
+| PostgreSQL DB | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
+| Redis DB | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
+| Next.js Web App | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
+| Docker Worker App | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
+| **Total** | | **2 GB** | **~۱,۴۰۰,۰۰۰ تومان/month** |
+
+> ⚠️ **Warning:** Earth plan for Next.js may cause OOM (Out of Memory) errors under load. Only use this for testing/light traffic.
+
+#### Recommended Production Setup
+
+| Resource | Plan | RAM | CPU | Disk | Monthly Cost |
+|----------|------|-----|-----|------|-------------|
+| PostgreSQL DB | 🔴 Mars | 1 GB | 1 core | 10 GB SSD | ۶۰۰,۰۰۰ تومان |
+| Redis DB | 🌍 Earth | 0.5 GB | 0.5 core | 5 GB SSD | ۳۵۰,۰۰۰ تومان |
+| Next.js Web App | 🔴 Mars | 1 GB | 1 core | 10 GB SSD | ۶۰۰,۰۰۰ تومان |
+| Docker Worker App | 🌍 Earth | 0.5 GB | 0.5 core | 5 GB SSD | ۳۵۰,۰۰۰ تومان |
+| **Total** | | **3 GB** | **3 cores** | **30 GB SSD** | **~۱,۹۰۰,۰۰۰ تومان/month** |
+
+#### High-Traffic Setup (10K+ concurrent users)
+
+| Resource | Plan | RAM | CPU | Disk | Monthly Cost |
+|----------|------|-----|-----|------|-------------|
+| PostgreSQL DB | Jupiter | 2 GB | 1 core | 20 GB SSD | ۱,۰۵۰,۰۰۰ تومان |
+| Redis DB | 🌍 Earth | 0.5 GB | 0.5 core | 5 GB SSD | ۳۵۰,۰۰۰ تومان |
+| Next.js Web App | Jupiter | 2 GB | 1 core | 20 GB SSD | ۱,۰۵۰,۰۰۰ تومان |
+| Docker Worker App | 🔴 Mars | 1 GB | 1 core | 10 GB SSD | ۶۰۰,۰۰۰ تومان |
+| **Total** | | **5.5 GB** | **3.5 cores** | **55 GB SSD** | **~۳,۰۵۰,۰۰۰ تومان/month** |
+
+> 💡 **Note:** All prices are approximate monthly rates based on Liara's current pricing (as of 1404). Liara also charges hourly, so you only pay for what you use. Always verify at [liara.ir/pricing](https://liara.ir/pricing).
 
 ---
 
