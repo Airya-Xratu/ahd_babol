@@ -10,6 +10,10 @@ node_modules
 !.yarn/releases
 !.yarn/versions
 
+# lockfiles (use npm only — bun.lock from Linux causes issues)
+bun.lock
+bun.lockb
+
 # testing
 /coverage
 
@@ -51,4 +55,8 @@ prompt
 
 server.log
 # Skills directory
-/skills/
+/skills/db/
+
+# Sandbox internals
+.zscripts/
+worklog.md
