@@ -1,6 +1,9 @@
 {
+  "name": "ahd-babol",
+  "platform": "node",
   "port": 3000,
-  "next": {
-    "mirror": true
+  "scripts": {
+    "start": "npm run start",
+    "build": "npm run build"
   }
 }
