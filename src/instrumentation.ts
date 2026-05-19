@@ -17,7 +17,8 @@
 export async function register() {
   // Only run on the server (not during build)
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    const { Worker, Job } = await import("bullmq");
+    const { Worker } = await import("bullmq");
+    type Job<T> = import("bullmq").Job<T>;
     const Redis = (await import("ioredis")).default;
     const { PrismaClient } = await import("@prisma/client");
 
