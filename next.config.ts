@@ -6,10 +6,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  // Enable instrumentation.ts — starts BullMQ worker on server startup
-  experimental: {
-    instrumentationHook: true,
-  },
+  // instrumentation.ts is stable in Next.js 15+ — no experimental flag needed
 };
 
 export default nextConfig;
