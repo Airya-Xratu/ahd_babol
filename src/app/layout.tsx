@@ -40,7 +40,7 @@ export default function RootLayout({
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
       <body
-        className={`${iranYekan.variable} font-mono antialiased bg-background text-foreground`}
+        className={`${iranYekan.variable} font-sans antialiased bg-background text-foreground`}
         suppressHydrationWarning
       >
         {children}
