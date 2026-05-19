@@ -17,6 +17,14 @@ Caddyfile
 # Old SQLite database
 db/
 
+# Prisma schema directory — NOT needed on Liara
+# The generated client at src/generated/prisma/ is self-contained
+# (includes inlineSchema, engine binary, and runtime)
+# Excluding this prevents Liara's configure_prisma.sh from detecting
+# Prisma and trying to "npm install prisma" (which fails because
+# registry.npmjs.org is unreachable)
+prisma/
+
 # Wiki/docs (not needed for build/runtime)
 wiki/
 docs/
