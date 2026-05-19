@@ -20,7 +20,7 @@ export async function register() {
     const { Worker } = await import("bullmq");
     type Job<T> = import("bullmq").Job<T>;
     const Redis = (await import("ioredis")).default;
-    const { PrismaClient } = await import("@prisma/client");
+    const { PrismaClient } = await import("../generated/prisma");
 
     const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
     const DATABASE_URL = process.env.DATABASE_URL;

@@ -69,5 +69,9 @@ Caddyfile
 # Old SQLite database
 db/
 
+# Prisma generated client — DO NOT IGNORE, must be committed for Liara deployment
+# (Liara can't access binaries.prisma.sh to download engines during build)
+!src/generated/
+
 # Worker deployment ZIP (no longer needed — worker runs inside Next.js)
 # worker-deploy.zip
