@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -21,10 +20,8 @@ const iranYekan = localFont({
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+// Geist Mono replaced with system monospace fallback
+// (Google Fonts is unreachable from Liara's build environment)
 
 export const metadata: Metadata = {
   title: "بیعت با ولی امر مسلمین",
@@ -43,7 +40,7 @@ export default function RootLayout({
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
       <body
-        className={`${iranYekan.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${iranYekan.variable} font-mono antialiased bg-background text-foreground`}
         suppressHydrationWarning
       >
         {children}
