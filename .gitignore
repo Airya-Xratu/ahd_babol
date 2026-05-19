@@ -10,7 +10,7 @@ node_modules
 !.yarn/releases
 !.yarn/versions
 
-# lockfiles (use npm only — bun.lock from Linux causes issues)
+# lockfiles — we use npm (package-lock.json) for Liara compatibility
 bun.lock
 bun.lockb
 

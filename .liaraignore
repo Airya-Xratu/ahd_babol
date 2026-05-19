@@ -1,15 +1,60 @@
 # Files/folders to exclude from Liara deployment uploads
+# This reduces upload size and speeds up deployment
+
+# Demo/example code (not needed in production)
 examples/
+
+# AI skills & internal tools
 skills/
+.zscripts/
+.claude/
+.z-ai-config/
+
+# Old architecture (replaced by BullMQ inside Next.js)
 mini-services/
 Caddyfile
+
+# Old SQLite database
 db/
-.zscripts/
-worklog.md
+
+# Wiki/docs (not needed for build/runtime)
+wiki/
+docs/
+
+# Upload artifacts
+upload/
+
+# Old standalone worker
+worker.ts
+
+# Logs
+*.log
 dev.log
 dev.out.log
 server.log
-.claude/
-.z-ai-config/
+worklog.md
+
+# Test & prompt files
 prompt/
 test/
+
+# Prisma WASM engine — not needed (we use library engine on Linux)
+# This saves ~2.3MB from the upload
+src/generated/prisma/query_engine_bg.wasm
+src/generated/prisma/query_engine_bg.js
+src/generated/prisma/wasm.js
+src/generated/prisma/wasm.d.ts
+src/generated/prisma/wasm-edge-light-loader.mjs
+src/generated/prisma/wasm-worker-loader.mjs
+src/generated/prisma/edge.js
+src/generated/prisma/edge.d.ts
+
+# Prisma browser runtime — not needed on server
+src/generated/prisma/index-browser.js
+src/generated/prisma/runtime/index-browser.d.ts
+src/generated/prisma/runtime/index-browser.js
+src/generated/prisma/runtime/react-native.js
+
+# Bun lockfile (Liara uses npm)
+bun.lock
+bun.lockb
