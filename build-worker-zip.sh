@@ -17,7 +17,8 @@ TMP_DIR=$(mktemp -d)
 echo "📦 Preparing worker deployment package..."
 
 # Copy only the files the worker Dockerfile needs
-cp worker.Dockerfile "$TMP_DIR/"
+# Rename worker.Dockerfile → Dockerfile (Liara expects "Dockerfile" by default)
+cp worker.Dockerfile "$TMP_DIR/Dockerfile"
 cp worker.ts        "$TMP_DIR/"
 cp package.json     "$TMP_DIR/"
 
@@ -51,5 +52,5 @@ echo "   1. Go to Liara Console → ahd-worker → استقرار (Deployments)"
 echo "   2. Click استقرار جدید (New Deployment)"
 echo "   3. Select آپلود سورس‌کد (Upload Source Code)"
 echo "   4. Upload: $ZIP_NAME"
-echo "   5. Set Dockerfile path: worker.Dockerfile"
+echo "   5. Dockerfile path: Dockerfile (default — already renamed in ZIP)"
 echo "   6. Click استقرار (Deploy)"
