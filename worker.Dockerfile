@@ -2,12 +2,18 @@
 # This Dockerfile creates a standalone image for the worker process
 # that consumes jobs from the BullMQ queue and writes to PostgreSQL.
 #
+# IMPORTANT: Uses node:22-slim (Debian) instead of node:22-alpine
+# because Liara's build environment has no international internet access.
+# Debian slim already includes openssl (needed by Prisma) so we don't
+# need to run apk add which would fail trying to reach alpinelinux.org.
+# npm is configured to use Liara's Iranian mirror (npm.liara.ir).
+#
 # Deploy with: liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
 
-FROM node:22-alpine AS base
+FROM node:22-slim AS base
 
-# Install openssl (needed by Prisma)
-RUN apk add --no-cache openssl
+# Use Liara's npm mirror (Iran-based, no international internet needed)
+RUN npm config set registry https://npm.liara.ir
 
 # ─── Dependencies ───
 FROM base AS deps
@@ -48,7 +54,7 @@ COPY prisma ./prisma
 COPY worker.ts ./worker.ts
 COPY package.json ./package.json
 
-# Install tsx for running TypeScript
+# Install tsx for running TypeScript (uses Liara mirror from base)
 RUN npm install -g tsx
 
 # Health check — verify worker process is running
