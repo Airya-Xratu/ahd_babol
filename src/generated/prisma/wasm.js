@@ -36,11 +36,11 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 6.19.2
+ * Prisma Client JS version: 6.19.3
  * Query Engine version: c2990dca591cba766e3b7ef5d9e8a84796e47ab7
  */
 Prisma.prismaVersion = {
-  client: "6.19.2",
+  client: "6.19.3",
   engine: "c2990dca591cba766e3b7ef5d9e8a84796e47ab7"
 }
 
@@ -128,7 +128,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/home/z/my-project/src/generated/prisma",
+      "value": "/Users/vhdrjb/Projects/Projects/airya-xratu/ahd_babol/src/generated/prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -137,7 +137,7 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "debian-openssl-3.0.x",
+        "value": "darwin",
         "native": true
       },
       {
@@ -146,15 +146,15 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/home/z/my-project/prisma/schema.prisma",
+    "sourceFilePath": "/Users/vhdrjb/Projects/Projects/airya-xratu/ahd_babol/prisma/schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
-    "rootEnvPath": "../../../.env",
+    "rootEnvPath": null,
     "schemaEnvPath": "../../../.env"
   },
   "relativePath": "../../../prisma",
-  "clientVersion": "6.19.2",
+  "clientVersion": "6.19.3",
   "engineVersion": "c2990dca591cba766e3b7ef5d9e8a84796e47ab7",
   "datasourceNames": [
     "db"
