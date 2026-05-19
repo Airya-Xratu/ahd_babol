@@ -16,7 +16,7 @@ User → Next.js API (validate + queue) → Redis/BullMQ → Worker → PostgreS
 
 1. **API Layer** (`POST /api/sign`): Validates input with Zod, pushes job to BullMQ queue in Redis, returns `202 Accepted` immediately (~5ms).
 2. **Queue** (BullMQ + Redis): Jobs wait in Redis for processing. BullMQ handles retries, backoff, and dead-letter automatically.
-3. **Worker** (`worker.ts`): A standalone process that listens to the queue, processes each job by inserting into PostgreSQL. Handles duplicate `nationalCode` via `P2002` error.
+3. **Worker** (`src/instrumentation.ts`): Runs inside the Next.js server process via Next.js instrumentation hook. Listens to the BullMQ queue and inserts signatures into PostgreSQL. Handles duplicate `nationalCode` via `P2002` error.
 4. **Count API** (`GET /api/count`): Returns confirmed signature count with 10-second Redis cache.
 
 ---
@@ -158,9 +158,8 @@ ahd_babol/
 │       ├── queue.ts           # BullMQ queue definition
 │       ├── redis.ts           # Redis client singleton
 │       └── validators.ts      # Zod validation schema (Persian errors)
-├── worker.ts                  # BullMQ worker (standalone process)
-├── worker.Dockerfile          # Docker image for worker (Liara deployment)
-├── worker.liara.json          # Liara config for worker app
+│   └── instrumentation.ts     # BullMQ worker (starts with Next.js server)
+├── worker.ts                  # Standalone worker (optional, for local dev)
 ├── liara.json                 # Liara config for Next.js web app
 ├── docker-compose.yml         # PostgreSQL + Redis (local development)
 ├── .env.local.example         # Environment template
@@ -293,29 +292,34 @@ This section walks you through **everything** you need to do to deploy the Coven
 ```
 Your Users
     ↓
-┌─────────────────────────────────────────────────────┐
-│  Liara Cloud Platform                               │
-│                                                     │
-│  ┌──────────┐    ┌──────────┐    ┌──────────────┐  │
-│  │ Next.js   │───▶│  Redis   │───▶│ Docker Worker│  │
-│  │ Web App   │    │ (BullMQ) │    │ (worker.ts)  │  │
-│  │ (PaaS)    │    │ (DBaaS)  │    │ (PaaS/Docker)│  │
-│  └─────┬─────┘    └──────────┘    └──────┬───────┘  │
-│        │                                  │         │
-│        │         ┌──────────────┐         │         │
-│        └────────▶│  PostgreSQL  │◀────────┘         │
-│                  │  (DBaaS)     │                   │
-│                  └──────────────┘                   │
-│                                                     │
-│  All connected via Private Network (internal)       │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  Liara Cloud Platform                            │
+│                                                  │
+│  ┌──────────────────┐    ┌──────────────────┐   │
+│  │  Next.js Web App │───▶│     Redis        │   │
+│  │  (PaaS)          │    │  (DBaaS)         │   │
+│  │  ┌────────────┐  │    │  - BullMQ Queue  │   │
+│  │  │ API routes │  │    │  - Count cache   │   │
+│  │  │ + Worker   │◀─┼────┘                  │   │
+│  │  └────────────┘  │                         │   │
+│  └────────┬─────────┘                         │   │
+│           │                                    │   │
+│           ▼                                    │   │
+│  ┌──────────────────┐                         │   │
+│  │   PostgreSQL     │                         │   │
+│  │   (DBaaS)        │                         │   │
+│  └──────────────────┘                         │   │
+│                                                  │
+│  All connected via Private Network (internal)    │
+└──────────────────────────────────────────────────┘
 ```
 
-You will create **4 resources** on Liara:
+> 💡 **The BullMQ worker runs INSIDE the Next.js app** via `instrumentation.ts`. No separate Docker app needed. This avoids Liara's Docker Hub connectivity issues and saves you money (1 fewer app to pay for).
+
+You will create **3 resources** on Liara:
 1. **PostgreSQL database** — stores signatures
 2. **Redis database** — powers the BullMQ job queue + caching
-3. **Next.js web app** — serves the website + API routes
-4. **Docker worker app** — processes the BullMQ queue
+3. **Next.js web app** — serves the website + API routes + BullMQ worker
 
 ---
 
@@ -359,22 +363,20 @@ Based on the Covenant Signing Platform's architecture and expected load (up to 5
 |---------|-------------|------------------|-----|
 | **PostgreSQL** | 🌍 Earth (0.5 GB) | 🔴 **Mars** (1 GB RAM, 1 core, 10 GB SSD) | Stores all signatures; needs RAM for query caching, disk for data growth. Earth is too tight for production. |
 | **Redis** | 🌍 Earth (0.5 GB) | 🌍 **Earth** (0.5 GB RAM, 0.5 core, 5 GB SSD) | Only stores job queue + 10s count cache — very lightweight. Earth is sufficient even at scale. |
-| **Next.js Web App** | 🌍 Earth (0.5 GB) | 🔴 **Mars** (1 GB RAM, 1 core, 10 GB SSD) | Next.js standalone needs ~300MB at idle; with concurrent requests, 1GB provides headroom. |
-| **Docker Worker** | 🌍 Earth (0.5 GB) | 🌍 **Earth** (0.5 GB RAM, 0.5 core, 5 GB SSD) | Worker is lightweight — reads from Redis, writes to PostgreSQL. 0.5 GB is enough for 50 concurrent jobs. |
+| **Next.js Web App** | 🌍 Earth (0.5 GB) | 🔴 **Mars** (1 GB RAM, 1 core, 10 GB SSD) | Next.js standalone + embedded BullMQ worker. ~400MB at idle; 1GB gives headroom for concurrent API + worker. |
 
-**Minimum viable setup (budget-friendly):** All services on Earth plan = ~۱,۴۰۰,۰۰۰ تومان/month
+**Minimum viable setup (budget-friendly):** All services on Earth plan = ~۱,۰۵۰,۰۰۰ تومان/month
 
 **Recommended production setup:**
 ```
 PostgreSQL  → Mars (1 GB)      → ۶۰۰,۰۰۰ تومان/month
 Redis       → Earth (0.5 GB)   → ۳۵۰,۰۰۰ تومان/month
 Web App     → Mars (1 GB)      → ۶۰۰,۰۰۰ تومان/month
-Worker App  → Earth (0.5 GB)   → ۳۵۰,۰۰۰ تومان/month
 ─────────────────────────────────────────────────────────
-Total                           → ۱,۹۰۰,۰۰۰ تومان/month
+Total                           → ۱,۵۵۰,۰۰۰ تومان/month
 ```
 
-> 💡 **Scaling tip:** If the web app gets slow under load, upgrade it to **Jupiter** (2 GB). If the worker falls behind on processing, add more worker instances (horizontal scaling) rather than upgrading the plan — BullMQ handles multiple workers automatically.
+> 💡 **Scaling tip:** If the web app gets slow under load, upgrade it to **Jupiter** (2 GB). The worker runs inside Next.js, so scaling the web app also scales the worker.
 
 ---
 
@@ -500,29 +502,9 @@ liara app:create
 
 ---
 
-### Phase 6: Create the Worker App (Docker)
+### Phase 6: Set Environment Variables
 
-The worker needs to run as a **separate** Docker-based app on Liara, since it's a background process (not a web server).
-
-1. In Liara Console, go to **پلتفرم** → **ایجاد برنامه**
-2. Select **Docker** as the platform
-3. Fill in:
-   - **شناسه (ID):** e.g., `ahd-worker`
-   - **شبکه خصوصی (Private Network):** Select the **same** network
-   - **منابع سخت‌افزاری (Resources):** 🌍 **Recommended: Earth (زمین)** — 0.5 GB RAM, 0.5 core CPU, 5 GB SSD (~۳۵۰,۰۰۰ تومان/month). The worker is lightweight — it reads from Redis and writes to PostgreSQL. 0.5 GB is enough for 50 concurrent jobs. If you need more throughput, scale horizontally (add more instances) rather than upgrading the plan.
-4. Click **ایجاد برنامه**
-
-The worker uses `worker.Dockerfile` (already in the project root) which installs dependencies, copies Prisma client and worker source, then runs `npx tsx worker.ts`.
-
----
-
-### Phase 7: Set Environment Variables
-
-For each app, you need to set environment variables in Liara Console.
-
-#### Web App (ahd-babol) — Environment Variables
-
-Go to your web app → **تنظیمات** (Settings) → **متغیرهای محیطی** (Environment Variables) and add:
+Go to your web app (`ahd-babol`) → **تنظیمات** (Settings) → **متغیرهای محیطی** (Environment Variables) and add:
 
 | Key | Value | Notes |
 |-----|-------|-------|
@@ -530,27 +512,20 @@ Go to your web app → **تنظیمات** (Settings) → **متغیرهای مح
 | `REDIS_URL` | `redis://covenant-redis:6379` | Use **Private Network** host |
 
 > ⚠️ **Important:** Use the **private network** hostnames (e.g., `covenant-pg` and `covenant-redis`), NOT the public ones. This ensures secure internal communication.
-
-#### Worker App (ahd-worker) — Environment Variables
-
-Go to your worker app → **تنظیمات** → **متغیرهای محیطی** and add the same:
-
-| Key | Value | Notes |
-|-----|-------|-------|
-| `DATABASE_URL` | `postgresql://covenant_pg:PASSWORD@covenant-pg:5432/postgres` | Same as web app |
-| `REDIS_URL` | `redis://covenant-redis:6379` | Same as web app |
+>
+> 💡 Since the BullMQ worker runs **inside** the Next.js app via `instrumentation.ts`, you only need to set env vars on the **web app** — no separate worker app needed!
 
 ---
 
-### Phase 8: Deploy via Liara CLI
+### Phase 7: Deploy via Liara CLI
 
 Since GitHub integration may not always be available, we use the **Liara CLI** to deploy directly from your machine.
 
-> 💡 **If GitHub integration becomes available later**, you can switch to it for automatic deploys on push. See the "Phase 8 Alternative: GitHub Integration" section at the end of this guide.
+> 💡 **If GitHub integration becomes available later**, you can switch to it for automatic deploys on push. See the "Phase 7 Alternative: GitHub Integration" section at the end of this guide.
 
 ---
 
-#### 8.1 Prerequisite — Generate `package-lock.json`
+#### 7.1 Prerequisite — Generate `package-lock.json`
 
 > ⚠️ **CRITICAL:** Liara's Next.js platform runs `npm ci` during build, which **requires** `package-lock.json`. If your project only has `bun.lock`, the build will fail with `npm error Exit handler never called!`
 
@@ -581,7 +556,7 @@ git push
 
 ---
 
-#### 8.2 Install and Login to Liara CLI
+#### 7.2 Install and Login to Liara CLI
 
 ```bash
 # Install the Liara CLI globally
@@ -598,7 +573,7 @@ liara whoami
 
 ---
 
-#### 8.3 Deploy the Next.js Web App
+#### 7.3 Deploy the Next.js Web App
 
 ```bash
 # From the project root directory
@@ -628,80 +603,9 @@ liara deploy --app=ahd-babol --platform=next
 
 ---
 
-#### 8.4 Deploy the Worker App (Docker)
+#### 7.4 Verify the Worker Started
 
-The worker is a **separate Docker app** that runs `worker.ts` in the background. It reads jobs from Redis and writes to PostgreSQL.
-
-You have **two options** to deploy the worker:
-
----
-
-##### Option A: Upload ZIP File (Recommended — Easiest)
-
-This method packages only the files the worker needs into a tiny ZIP, then uploads it via Liara Console.
-
-**Step 1: Create the deployment ZIP**
-
-```bash
-# From the project root directory
-./build-worker-zip.sh
-```
-
-This creates `worker-deploy.zip` (~8 KB) containing only:
-- `worker.Dockerfile` — the Docker build instructions
-- `worker.ts` — the worker source code
-- `package.json` — dependency list
-- `package-lock.json` — lock file (if exists)
-- `prisma/schema.prisma` — database schema
-
-> 💡 The ZIP is tiny because it only includes worker files — no Next.js code, no `src/`, no `public/`.
-
-**Step 2: Upload to Liara Console**
-
-1. Go to [Liara Console](https://console.liara.ir) → your worker app (`ahd-worker`)
-2. Go to **استقرار** (Deployments) tab
-3. Click **استقرار جدید** (New Deployment)
-4. Select **آپلود سورس‌کد** (Upload Source Code)
-5. Upload the `worker-deploy.zip` file
-6. In the **Dockerfile** field, enter: `worker.Dockerfile`
-7. Click **استقرار** (Deploy)
-8. Wait for the build to complete (2-4 minutes on first deploy)
-
----
-
-##### Option B: Deploy via Liara CLI
-
-```bash
-# Deploy the worker as a Docker app
-liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
-```
-
-> ⚠️ This uploads the entire project (~6 MB). Option A is faster since it only uploads the worker files.
-
----
-
-**What the `worker.Dockerfile` does (3-stage build):**
-
-```
-┌──────────────────────────────────────────────┐
-│ Stage 1: deps                                │
-│   COPY package.json + package-lock.json      │
-│   npm ci --omit=dev  (production deps only)  │
-├──────────────────────────────────────────────┤
-│ Stage 2: builder                             │
-│   npm ci  (all deps including dev)           │
-│   COPY prisma/ → npx prisma generate         │
-├──────────────────────────────────────────────┤
-│ Stage 3: runner (final image)                │
-│   COPY node_modules from deps                │
-│   COPY .prisma/ from builder                 │
-│   COPY worker.ts + prisma/ + package.json    │
-│   npm install -g tsx                         │
-│   CMD ["npx", "tsx", "worker.ts"]            │
-└──────────────────────────────────────────────┘
-```
-
-**Verify the worker is running** — check logs in Liara Console → `ahd-worker` → **لاگ‌ها** (Logs). You should see:
+After deployment, the BullMQ worker starts **automatically** inside Next.js via `instrumentation.ts`. Check logs in Liara Console → `ahd-babol` → **لاگ‌ها** (Logs). You should see:
 
 ```
 [Worker] Connected to Redis
@@ -710,14 +614,14 @@ liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
 [Worker] Database: postgresql://covenant_pg:****@covenant-pg:5432/postgres
 ```
 
-> ⚠️ **If you see connection errors** in the worker logs, check:
+> ⚠️ **If you see connection errors**, check:
 > 1. Are all services on the **same private network**?
 > 2. Are env vars using **private network** hostnames (e.g., `covenant-pg` not the public host)?
 > 3. Is the PostgreSQL database **running** (check status in Liara Console)?
 
 ---
 
-#### 8.5 Deploy Summary & Cheat Sheet
+#### 7.5 Deploy Summary & Cheat Sheet
 
 ```bash
 # ─── One-time setup ───────────────────────────
@@ -725,20 +629,16 @@ npm install -g @liara/cli     # Install CLI
 liara login                   # Login
 npm install                   # Generate package-lock.json (if missing)
 
-# ─── Deploy web app ──────────────────────────
+# ─── Deploy (only one command!) ───────────────
 liara deploy --app=ahd-babol --platform=next
 
-# ─── Deploy worker ───────────────────────────
-liara deploy --app=ahd-worker --platform=docker --dockerfile=worker.Dockerfile
-
 # ─── Check status ────────────────────────────
-liara app:logs --app=ahd-babol       # Web app logs
-liara app:logs --app=ahd-worker      # Worker logs
+liara app:logs --app=ahd-babol       # Web app + worker logs
 ```
 
 ---
 
-### Phase 8 Alternative: Deploy via GitHub Integration
+### Phase 7 Alternative: Deploy via GitHub Integration
 
 > 💡 Use this method **only** if GitHub integration becomes available. It provides automatic deploys on every git push.
 
@@ -759,22 +659,15 @@ liara app:logs --app=ahd-worker      # Worker logs
 5. Choose the repository and branch (`main`)
 6. Click **استقرار** (Deploy)
 
-#### Deploy the Worker via GitHub
-
-1. Go to your worker app (`ahd-worker`) in Liara Console
-2. Go to **استقرار** → **استقرار جدید**
-3. Select **GitHub** as the source
-4. Choose the same repository and branch (`main`)
-5. **Set the Dockerfile path** to `worker.Dockerfile`
-6. Click **استقرار** (Deploy)
-
 > ⚠️ **Important:** When deploying via GitHub, do NOT include the `app` or `platform` fields in `liara.json`. Liara auto-detects these.
+>
+> 💡 The BullMQ worker starts automatically with the web app — no separate deployment needed!
 
 ---
 
-### Phase 9: Connect a Custom Domain & Enable SSL
+### Phase 8: Connect a Custom Domain & Enable SSL
 
-#### 9.1 Add Your Domain
+#### 8.1 Add Your Domain
 
 1. Go to your web app (`ahd-babol`) in Liara Console
 2. Go to **تنظیمات** (Settings) → **دامنه‌ها** (Domains)
@@ -782,7 +675,7 @@ liara app:logs --app=ahd-worker      # Worker logs
 4. Enter your domain name (e.g., `ahd-babol.ir` or `bayat.mydomain.com`)
 5. Click **افزودن**
 
-#### 9.2 Configure DNS Records
+#### 8.2 Configure DNS Records
 
 Liara will show you the DNS records you need to add at your domain registrar. Typically:
 
@@ -798,7 +691,7 @@ Liara will show you the DNS records you need to add at your domain registrar. Ty
 
 > 💡 Go to your domain registrar's DNS management panel and add the record Liara provides.
 
-#### 9.3 Add www Subdomain (Optional)
+#### 8.3 Add www Subdomain (Optional)
 
 1. In the same Domains section, click **افزودن زیردامنه www**
 2. Add a CNAME record:
@@ -806,7 +699,7 @@ Liara will show you the DNS records you need to add at your domain registrar. Ty
    |------|------|-------|
    | CNAME | `www` | `ahd-babol.liara.run` |
 
-#### 9.4 Enable SSL Certificate
+#### 8.4 Enable SSL Certificate
 
 1. In the Domains section, find your custom domain
 2. Click **تهیه گواهی SSL** (Provision SSL Certificate)
@@ -815,7 +708,7 @@ Liara will show you the DNS records you need to add at your domain registrar. Ty
 
 > ✅ That's it! Your site is now live at `https://yourdomain.ir` with HTTPS.
 
-#### 9.5 Disable Default Subdomain (Optional)
+#### 8.5 Disable Default Subdomain (Optional)
 
 If you want to disable the default `ahd-babol.liara.run` URL so only your custom domain works:
 
@@ -824,14 +717,14 @@ If you want to disable the default `ahd-babol.liara.run` URL so only your custom
 
 ---
 
-### Phase 10: Verify Everything Works
+### Phase 9: Verify Everything Works
 
 1. **Visit your site** at `https://yourdomain.ir`
 2. **Click "ورود و بیعت"** to enter the content page
 3. **Fill the form** and submit
 4. **API returns 202** — job is queued in Redis
-5. **Check worker logs** in Liara Console → worker app → **لاگ‌ها** (Logs)
-   - You should see: `✓ Job xxx — FirstName LastName (nationalCode)`
+5. **Check logs** in Liara Console → `ahd-babol` → **لاگ‌ها** (Logs)
+   - You should see: `[Worker] ✓ Job xxx — FirstName LastName (nationalCode)`
 6. **Refresh the page** — the count should update (after 10s Redis cache TTL)
 
 ---
@@ -852,7 +745,8 @@ If you want to disable the default `ahd-babol.liara.run` URL so only your custom
 
 - Verify all services are on the **same private network**
 - Use **private network** hostnames (e.g., `covenant-pg`, `covenant-redis`), not public ones
-- Check environment variables in the worker app settings
+- Check environment variables in the web app settings
+- The worker runs inside Next.js — check the web app logs, not a separate worker app
 
 #### "Connection refused" Errors
 
@@ -884,9 +778,8 @@ All services on **Earth (زمین)** plan:
 |----------|------|-----|-------------|
 | PostgreSQL DB | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
 | Redis DB | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
-| Next.js Web App | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
-| Docker Worker App | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
-| **Total** | | **2 GB** | **~۱,۴۰۰,۰۰۰ تومان/month** |
+| Next.js Web App (+ Worker) | Earth | 0.5 GB | ۳۵۰,۰۰۰ تومان |
+| **Total** | | **1.5 GB** | **~۱,۰۵۰,۰۰۰ تومان/month** |
 
 > ⚠️ **Warning:** Earth plan for Next.js may cause OOM (Out of Memory) errors under load. Only use this for testing/light traffic.
 
@@ -896,9 +789,8 @@ All services on **Earth (زمین)** plan:
 |----------|------|-----|-----|------|-------------|
 | PostgreSQL DB | 🔴 Mars | 1 GB | 1 core | 10 GB SSD | ۶۰۰,۰۰۰ تومان |
 | Redis DB | 🌍 Earth | 0.5 GB | 0.5 core | 5 GB SSD | ۳۵۰,۰۰۰ تومان |
-| Next.js Web App | 🔴 Mars | 1 GB | 1 core | 10 GB SSD | ۶۰۰,۰۰۰ تومان |
-| Docker Worker App | 🌍 Earth | 0.5 GB | 0.5 core | 5 GB SSD | ۳۵۰,۰۰۰ تومان |
-| **Total** | | **3 GB** | **3 cores** | **30 GB SSD** | **~۱,۹۰۰,۰۰۰ تومان/month** |
+| Next.js Web App (+ Worker) | 🔴 Mars | 1 GB | 1 core | 10 GB SSD | ۶۰۰,۰۰۰ تومان |
+| **Total** | | **2.5 GB** | **2.5 cores** | **25 GB SSD** | **~۱,۵۵۰,۰۰۰ تومان/month** |
 
 #### High-Traffic Setup (10K+ concurrent users)
 
@@ -906,9 +798,8 @@ All services on **Earth (زمین)** plan:
 |----------|------|-----|-----|------|-------------|
 | PostgreSQL DB | Jupiter | 2 GB | 1 core | 20 GB SSD | ۱,۰۵۰,۰۰۰ تومان |
 | Redis DB | 🌍 Earth | 0.5 GB | 0.5 core | 5 GB SSD | ۳۵۰,۰۰۰ تومان |
-| Next.js Web App | Jupiter | 2 GB | 1 core | 20 GB SSD | ۱,۰۵۰,۰۰۰ تومان |
-| Docker Worker App | 🔴 Mars | 1 GB | 1 core | 10 GB SSD | ۶۰۰,۰۰۰ تومان |
-| **Total** | | **5.5 GB** | **3.5 cores** | **55 GB SSD** | **~۳,۰۵۰,۰۰۰ تومان/month** |
+| Next.js Web App (+ Worker) | Jupiter | 2 GB | 1 core | 20 GB SSD | ۱,۰۵۰,۰۰۰ تومان |
+| **Total** | | **4.5 GB** | **2.5 cores** | **45 GB SSD** | **~۲,۴۵۰,۰۰۰ تومان/month** |
 
 > 💡 **Note:** All prices are approximate monthly rates based on Liara's current pricing (as of 1404). Liara also charges hourly, so you only pay for what you use. Always verify at [liara.ir/pricing](https://liara.ir/pricing).
 
@@ -916,8 +807,7 @@ All services on **Earth (زمین)** plan:
 
 ### 📈 Scaling on Liara
 
-- **Web App:** Scale vertically (more RAM/CPU) or horizontally (more instances) from the app settings
-- **Worker:** Scale horizontally — just increase the instance count. BullMQ handles multiple workers automatically
+- **Web App + Worker:** Scale vertically (more RAM/CPU) or horizontally (more instances) from the app settings. BullMQ handles multiple workers automatically when you scale horizontally.
 - **Databases:** Scale vertically from the database settings. For PostgreSQL, you can also enable connection pooling
 
 ---
@@ -964,9 +854,9 @@ docker compose logs postgres
 
 ### "Worker not processing jobs"
 
-1. Ensure worker is running: `npm run worker`
-2. Check Redis connectivity: `docker exec -it covenant_redis redis-cli ping`
-3. Check worker logs for errors
+1. The worker starts automatically with `npm run dev` via `instrumentation.ts` — check console for `[Worker] 🚀 Worker ready`
+2. Alternatively, run the standalone worker: `npm run worker`
+3. Check Redis connectivity: `docker exec -it covenant_redis redis-cli ping`
 
 ### "Port 3000 already in use"
 
