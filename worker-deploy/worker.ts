@@ -63,8 +63,19 @@ async function processSignatureJob(job: Job<SignatureJobData>): Promise<void> {
       },
     });
 
-    console.log(`[Worker] ✓ Job ${job.id} — ${firstName} ${lastName}`);
+    console.log(`[Worker] ✓ Job ${job.id} — ${firstName} ${lastName} (${mobile})`);
   } catch (dbError: unknown) {
+    // Silently ignore duplicate mobile (P2002 = unique constraint violation)
+    if (
+      dbError &&
+      typeof dbError === "object" &&
+      "code" in dbError &&
+      (dbError as { code: string }).code === "P2002"
+    ) {
+      console.log(`[Worker] ⚠ Job ${job.id} — Duplicate mobile: ${mobile}`);
+      return;
+    }
+
     // Other errors — throw to trigger BullMQ retry
     console.error(`[Worker] ✗ Job ${job.id} — Error:`, dbError);
     throw dbError;

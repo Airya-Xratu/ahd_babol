@@ -2008,16 +2008,16 @@ export namespace Prisma {
 
   export type SignatureWhereUniqueInput = Prisma.AtLeast<{
     id?: string
+    mobile?: string
     AND?: SignatureWhereInput | SignatureWhereInput[]
     OR?: SignatureWhereInput[]
     NOT?: SignatureWhereInput | SignatureWhereInput[]
     firstName?: StringFilter<"Signature"> | string
     lastName?: StringFilter<"Signature"> | string
     nationalCode?: StringNullableFilter<"Signature"> | string | null
-    mobile?: StringFilter<"Signature"> | string
     signedAt?: DateTimeFilter<"Signature"> | Date | string
     createdAt?: DateTimeFilter<"Signature"> | Date | string
-  }, "id">
+  }, "id" | "mobile">
 
   export type SignatureOrderByWithAggregationInput = {
     id?: SortOrder

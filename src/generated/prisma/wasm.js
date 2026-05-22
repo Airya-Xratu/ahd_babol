@@ -174,8 +174,8 @@ const config = {
       }
     }
   },
-  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\ngenerator client {\n  provider      = \"prisma-client-js\"\n  output        = \"../src/generated/prisma\"\n  binaryTargets = [\"native\", \"debian-openssl-3.0.x\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Signature {\n  id           String   @id @default(cuid())\n  firstName    String\n  lastName     String\n  nationalCode String?\n  mobile       String\n  signedAt     DateTime @default(now())\n  createdAt    DateTime @default(now())\n\n  @@index([signedAt])\n}\n",
-  "inlineSchemaHash": "1024e684c511cce852a7d155ce813c67bd1f771d11c7dff52da7834e9c794655",
+  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\ngenerator client {\n  provider      = \"prisma-client-js\"\n  output        = \"../src/generated/prisma\"\n  binaryTargets = [\"native\", \"debian-openssl-3.0.x\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Signature {\n  id           String   @id @default(cuid())\n  firstName    String\n  lastName     String\n  nationalCode String?\n  mobile       String   @unique\n  signedAt     DateTime @default(now())\n  createdAt    DateTime @default(now())\n\n  @@index([mobile])\n  @@index([signedAt])\n}\n",
+  "inlineSchemaHash": "bef62da4d7e08d93df1c2592abd0c1bcc7c2051e209150ddbfb992a4845f9446",
   "copyEngine": true
 }
 config.dirname = '/'

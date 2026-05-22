@@ -17,9 +17,10 @@ model Signature {
   firstName    String
   lastName     String
   nationalCode String?
-  mobile       String
+  mobile       String   @unique
   signedAt     DateTime @default(now())
   createdAt    DateTime @default(now())
 
+  @@index([mobile])
   @@index([signedAt])
 }
