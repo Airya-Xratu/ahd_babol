@@ -35,6 +35,73 @@ export async function register() {
     // Prisma Client
     const prisma = new PrismaClient({ log: ["error"] });
 
+    // ── Auto-migrate: sync DB schema with Prisma schema ──
+    // This runs idempotent ALTER statements to make the actual PostgreSQL
+    // schema match our Prisma schema. Needed because `prisma db push`
+    // can't run on Liara (no Prisma CLI in production).
+    try {
+      // Make nationalCode nullable (was NOT NULL from old schema)
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "Signature" ALTER COLUMN "nationalCode" DROP NOT NULL;
+      `);
+      console.log("[Migration] ✓ nationalCode is now nullable");
+    } catch (e: unknown) {
+      // Column may already be nullable — that's fine
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("cannot be used") || msg.includes("already")) {
+        console.log("[Migration] nationalCode already nullable — skipping");
+      } else {
+        console.warn("[Migration] Could not alter nationalCode:", msg);
+      }
+    }
+
+    try {
+      // Remove old unique constraint on nationalCode (if exists)
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "Signature" DROP CONSTRAINT IF EXISTS "Signature_nationalCode_key";
+      `);
+      console.log("[Migration] ✓ Removed nationalCode unique constraint");
+    } catch (e: unknown) {
+      console.warn("[Migration] Could not drop nationalCode unique:", e instanceof Error ? e.message : String(e));
+    }
+
+    try {
+      // Drop old nationalCode index (if exists)
+      await prisma.$executeRawUnsafe(`
+        DROP INDEX IF EXISTS "Signature_nationalCode_idx";
+      `);
+      console.log("[Migration] ✓ Removed nationalCode index");
+    } catch (e: unknown) {
+      console.warn("[Migration] Could not drop nationalCode index:", e instanceof Error ? e.message : String(e));
+    }
+
+    try {
+      // Add unique constraint on mobile (if not exists)
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "Signature" ADD CONSTRAINT "Signature_mobile_key" UNIQUE ("mobile");
+      `);
+      console.log("[Migration] ✓ mobile is now unique");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("already exists") || msg.includes("duplicate")) {
+        console.log("[Migration] mobile unique constraint already exists — skipping");
+      } else {
+        console.warn("[Migration] Could not add mobile unique:", msg);
+      }
+    }
+
+    try {
+      // Add index on mobile (if not exists)
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "Signature_mobile_idx" ON "Signature"("mobile");
+      `);
+      console.log("[Migration] ✓ mobile index created");
+    } catch (e: unknown) {
+      console.warn("[Migration] Could not create mobile index:", e instanceof Error ? e.message : String(e));
+    }
+
+    console.log("[Migration] ✅ Database schema synced");
+
     // Dedicated Redis connection for the worker
     const redisConnection = new Redis(REDIS_URL, {
       maxRetriesPerRequest: null,
