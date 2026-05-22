@@ -1,10 +1,6 @@
 /**
  * BullMQ Worker — Background processor for the Covenant Signing Platform
  *
- * This replaces the old polling-based worker. Instead of polling a
- * PendingSignature table every 500ms, this worker LISTENS to the BullMQ
- * queue and processes jobs as soon as they arrive (push-based).
- *
  * Flow:
  *   API → BullMQ Queue (Redis) → This Worker → PostgreSQL (Signature table)
  *
@@ -49,7 +45,7 @@ redisConnection.on("connect", () => {
 interface SignatureJobData {
   firstName: string;
   lastName: string;
-  nationalCode: string;
+  nationalCode?: string | null;
   mobile: string;
 }
 
@@ -62,25 +58,13 @@ async function processSignatureJob(job: Job<SignatureJobData>): Promise<void> {
       data: {
         firstName,
         lastName,
-        nationalCode,
+        nationalCode: nationalCode ?? null,
         mobile,
       },
     });
 
-    console.log(`[Worker] ✓ Job ${job.id} — ${firstName} ${lastName} (${nationalCode})`);
+    console.log(`[Worker] ✓ Job ${job.id} — ${firstName} ${lastName}`);
   } catch (dbError: unknown) {
-    // Check for unique constraint violation (duplicate nationalCode)
-    if (
-      dbError &&
-      typeof dbError === "object" &&
-      "code" in dbError &&
-      (dbError as { code: string }).code === "P2002"
-    ) {
-      // Duplicate — log and discard (don't throw, so BullMQ considers it done)
-      console.log(`[Worker] ⚠ Job ${job.id} — Duplicate nationalCode: ${nationalCode}`);
-      return;
-    }
-
     // Other errors — throw to trigger BullMQ retry
     console.error(`[Worker] ✗ Job ${job.id} — Error:`, dbError);
     throw dbError;

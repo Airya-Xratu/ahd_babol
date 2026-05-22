@@ -49,11 +49,11 @@ export async function register() {
       console.log("[Worker] Connected to Redis");
     });
 
-    // Job type
+    // Job type — nationalCode is now optional (nullable)
     interface SignatureJobData {
       firstName: string;
       lastName: string;
-      nationalCode: string;
+      nationalCode?: string | null;
       mobile: string;
     }
 
@@ -63,19 +63,15 @@ export async function register() {
 
       try {
         await prisma.signature.create({
-          data: { firstName, lastName, nationalCode, mobile },
+          data: {
+            firstName,
+            lastName,
+            nationalCode: nationalCode ?? null,
+            mobile,
+          },
         });
-        console.log(`[Worker] ✓ Job ${job.id} — ${firstName} ${lastName} (${nationalCode})`);
+        console.log(`[Worker] ✓ Job ${job.id} — ${firstName} ${lastName}`);
       } catch (dbError: unknown) {
-        if (
-          dbError &&
-          typeof dbError === "object" &&
-          "code" in dbError &&
-          (dbError as { code: string }).code === "P2002"
-        ) {
-          console.log(`[Worker] ⚠ Job ${job.id} — Duplicate nationalCode: ${nationalCode}`);
-          return;
-        }
         console.error(`[Worker] ✗ Job ${job.id} — Error:`, dbError);
         throw dbError;
       }

@@ -25,7 +25,6 @@ export default function Home() {
   // Form state
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [nationalCode, setNationalCode] = useState("");
   const [mobile, setMobile] = useState("");
 
   // Form validation
@@ -68,9 +67,6 @@ export default function Home() {
     if (!lastName || lastName.length < 2 || lastName.length > 50) {
       newErrors.lastName = "نام خانوادگی باید بین ۲ تا ۵۰ کاراکتر باشد";
     }
-    if (!/^\d{10}$/.test(nationalCode)) {
-      newErrors.nationalCode = "کد ملی باید دقیقاً ۱۰ رقم باشد";
-    }
     if (!/^09\d{9}$/.test(mobile)) {
       newErrors.mobile = "شماره موبایل باید ۱۱ رقم و با ۰۹ شروع شود";
     }
@@ -96,7 +92,6 @@ export default function Home() {
         body: JSON.stringify({
           firstName,
           lastName,
-          nationalCode,
           mobile,
         }),
       });
@@ -107,7 +102,6 @@ export default function Home() {
         setSubmitStatus("success");
         setFirstName("");
         setLastName("");
-        setNationalCode("");
         setMobile("");
         setErrors({});
         // Refresh count from server after a short delay (worker needs time)
@@ -390,56 +384,31 @@ export default function Home() {
                     <p className="text-destructive text-xs">{errors.lastName}</p>
                   )}
                 </div>
+              </div>
 
-                {/* National Code */}
-                <div className="space-y-2">
-                  <Label htmlFor="nationalCode">کد ملی</Label>
-                  <Input
-                    id="nationalCode"
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="۱۰ رقم"
-                    maxLength={10}
-                    value={nationalCode}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, "");
-                      setNationalCode(val);
-                      if (errors.nationalCode) {
-                        setErrors((prev) => ({ ...prev, nationalCode: "" }));
-                      }
-                    }}
-                    className={`text-right tracking-widest ${errors.nationalCode ? "border-destructive focus-visible:border-destructive" : ""}`}
-                    disabled={isSubmitting}
-                  />
-                  {errors.nationalCode && (
-                    <p className="text-destructive text-xs">{errors.nationalCode}</p>
-                  )}
-                </div>
-
-                {/* Mobile */}
-                <div className="space-y-2">
-                  <Label htmlFor="mobile">شماره موبایل</Label>
-                  <Input
-                    id="mobile"
-                    type="tel"
-                    inputMode="tel"
-                    placeholder="۰۹xxxxxxxxx"
-                    maxLength={11}
-                    value={mobile}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/\D/g, "");
-                      setMobile(val);
-                      if (errors.mobile) {
-                        setErrors((prev) => ({ ...prev, mobile: "" }));
-                      }
-                    }}
-                    className={`text-right tracking-widest ${errors.mobile ? "border-destructive focus-visible:border-destructive" : ""}`}
-                    disabled={isSubmitting}
-                  />
-                  {errors.mobile && (
-                    <p className="text-destructive text-xs">{errors.mobile}</p>
-                  )}
-                </div>
+              {/* Mobile — full width row */}
+              <div className="space-y-2">
+                <Label htmlFor="mobile">شماره موبایل</Label>
+                <Input
+                  id="mobile"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="۰۹xxxxxxxxx"
+                  maxLength={11}
+                  value={mobile}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, "");
+                    setMobile(val);
+                    if (errors.mobile) {
+                      setErrors((prev) => ({ ...prev, mobile: "" }));
+                    }
+                  }}
+                  className={`text-right tracking-widest ${errors.mobile ? "border-destructive focus-visible:border-destructive" : ""}`}
+                  disabled={isSubmitting}
+                />
+                {errors.mobile && (
+                  <p className="text-destructive text-xs">{errors.mobile}</p>
+                )}
               </div>
 
               <Button

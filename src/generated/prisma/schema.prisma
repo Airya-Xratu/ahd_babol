@@ -16,11 +16,10 @@ model Signature {
   id           String   @id @default(cuid())
   firstName    String
   lastName     String
-  nationalCode String   @unique
+  nationalCode String?
   mobile       String
   signedAt     DateTime @default(now())
   createdAt    DateTime @default(now())
 
-  @@index([nationalCode])
   @@index([signedAt])
 }

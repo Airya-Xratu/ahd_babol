@@ -36,11 +36,11 @@ exports.Prisma = Prisma
 exports.$Enums = {}
 
 /**
- * Prisma Client JS version: 6.19.3
+ * Prisma Client JS version: 6.19.2
  * Query Engine version: c2990dca591cba766e3b7ef5d9e8a84796e47ab7
  */
 Prisma.prismaVersion = {
-  client: "6.19.3",
+  client: "6.19.2",
   engine: "c2990dca591cba766e3b7ef5d9e8a84796e47ab7"
 }
 
@@ -113,6 +113,11 @@ exports.Prisma.QueryMode = {
   insensitive: 'insensitive'
 };
 
+exports.Prisma.NullsOrder = {
+  first: 'first',
+  last: 'last'
+};
+
 
 exports.Prisma.ModelName = {
   Signature: 'Signature'
@@ -128,7 +133,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "/Users/vhdrjb/Projects/Projects/airya-xratu/ahd_babol/src/generated/prisma",
+      "value": "/home/z/my-project/src/generated/prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -137,7 +142,7 @@ const config = {
     "binaryTargets": [
       {
         "fromEnvVar": null,
-        "value": "darwin",
+        "value": "debian-openssl-3.0.x",
         "native": true
       },
       {
@@ -146,7 +151,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "/Users/vhdrjb/Projects/Projects/airya-xratu/ahd_babol/prisma/schema.prisma",
+    "sourceFilePath": "/home/z/my-project/prisma/schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
@@ -154,12 +159,13 @@ const config = {
     "schemaEnvPath": "../../../.env"
   },
   "relativePath": "../../../prisma",
-  "clientVersion": "6.19.3",
+  "clientVersion": "6.19.2",
   "engineVersion": "c2990dca591cba766e3b7ef5d9e8a84796e47ab7",
   "datasourceNames": [
     "db"
   ],
   "activeProvider": "postgresql",
+  "postinstall": false,
   "inlineDatasources": {
     "db": {
       "url": {
@@ -168,8 +174,8 @@ const config = {
       }
     }
   },
-  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\ngenerator client {\n  provider      = \"prisma-client-js\"\n  output        = \"../src/generated/prisma\"\n  binaryTargets = [\"native\", \"debian-openssl-3.0.x\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Signature {\n  id           String   @id @default(cuid())\n  firstName    String\n  lastName     String\n  nationalCode String   @unique\n  mobile       String\n  signedAt     DateTime @default(now())\n  createdAt    DateTime @default(now())\n\n  @@index([nationalCode])\n  @@index([signedAt])\n}\n",
-  "inlineSchemaHash": "98c8e25c472a3847e70c72e5effbdfc6dec84a4bf5b2fe603c817f0910316b7f",
+  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\ngenerator client {\n  provider      = \"prisma-client-js\"\n  output        = \"../src/generated/prisma\"\n  binaryTargets = [\"native\", \"debian-openssl-3.0.x\"]\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel Signature {\n  id           String   @id @default(cuid())\n  firstName    String\n  lastName     String\n  nationalCode String?\n  mobile       String\n  signedAt     DateTime @default(now())\n  createdAt    DateTime @default(now())\n\n  @@index([signedAt])\n}\n",
+  "inlineSchemaHash": "1024e684c511cce852a7d155ce813c67bd1f771d11c7dff52da7834e9c794655",
   "copyEngine": true
 }
 config.dirname = '/'

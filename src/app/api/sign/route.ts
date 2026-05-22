@@ -30,11 +30,10 @@ export async function POST(request: Request) {
     const { firstName, lastName, nationalCode, mobile } = result.data;
 
     // FAST PATH: Add job to BullMQ queue (Redis only — no DB write)
-    // This is even faster than the old DB insert since Redis is in-memory
     await signatureQueue.add("sign", {
       firstName,
       lastName,
-      nationalCode,
+      nationalCode: nationalCode ?? null,
       mobile,
     });
 
