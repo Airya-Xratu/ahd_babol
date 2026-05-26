@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,37 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  ExternalLink,
+  Copy,
+  Check,
 } from "lucide-react";
+
+/* ── In-app browser detection ── */
+function detectInAppBrowser(): { is: boolean; name: string } {
+  if (typeof navigator === "undefined") return { is: false, name: "" };
+  const ua = navigator.userAgent || "";
+  const uaLower = ua.toLowerCase();
+
+  const browsers: [RegExp, string][] = [
+    [/telegram/i, "تلگرام"],
+    [/eita/i, "ایتا"],
+    [/bale/i, "بله"],
+    [/gap/i, "گپ"],
+    [/instagram/i, "اینستاگرام"],
+    [/fbav|fban|fb_iab/i, "فیسبوک"],
+    [/messenger/i, "مسنجر"],
+    [/whatsapp/i, "واتساپ"],
+    [/viber/i, "وایبر"],
+  ];
+
+  for (const [regex, name] of browsers) {
+    if (regex.test(ua) || regex.test(uaLower)) {
+      return { is: true, name };
+    }
+  }
+
+  return { is: false, name: "" };
+}
 
 export default function Home() {
   const [showContent, setShowContent] = useState(false);
@@ -21,6 +51,11 @@ export default function Home() {
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
   const formRef = useRef<HTMLDivElement>(null);
+
+  // In-app browser detection (ref avoids re-render; only read on client)
+  const inAppBrowserRef = useRef<{ is: boolean; name: string }>({ is: false, name: "" });
+  const [inAppBrowser, setInAppBrowser] = useState<{ is: boolean; name: string }>({ is: false, name: "" });
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Form state
   const [firstName, setFirstName] = useState("");
@@ -33,28 +68,66 @@ export default function Home() {
   const SIGNATURE_DISPLAY_THRESHOLD = 5000;
   const showSignatureCount = signatureCount >= SIGNATURE_DISPLAY_THRESHOLD;
 
-  // Fetch signature count
-  const fetchCount = useCallback(async () => {
-    try {
-      const res = await fetch("/api/count");
-      if (res.ok) {
-        const data = await res.json();
-        setSignatureCount(data.confirmed ?? data.count ?? 0);
-      }
-    } catch {
-      // Silently fail
-    }
-  }, []);
-
+  // Detect in-app browser on mount + start polling
   useEffect(() => {
-    fetchCount();
-    const interval = setInterval(fetchCount, 10000);
+    // In-app browser detection (client-only, after hydration)
+    const detected = detectInAppBrowser();
+    inAppBrowserRef.current = detected;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: must detect UA after hydration
+    if (detected.is) setInAppBrowser(detected);
+
+    // Fetch initial signature count
+    const fetchInitialCount = async () => {
+      try {
+        const res = await fetch("/api/count");
+        if (res.ok) {
+          const data = await res.json();
+          setSignatureCount(data.confirmed ?? data.count ?? 0);
+        }
+      } catch {
+        // Silently fail
+      }
+    };
+    fetchInitialCount();
+
+    // Poll for count updates
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/count");
+        if (res.ok) {
+          const data = await res.json();
+          setSignatureCount(data.confirmed ?? data.count ?? 0);
+        }
+      } catch {
+        // Silently fail
+      }
+    }, 10000);
+
     return () => clearInterval(interval);
-  }, [fetchCount]);
+  }, []);
 
   // Scroll to form
   const scrollToForm = () => {
     formRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  // Copy link to clipboard for in-app browser users
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // Fallback
+      const input = document.createElement("input");
+      input.value = window.location.href;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    }
   };
 
   // Validate form
@@ -105,7 +178,17 @@ export default function Home() {
         setMobile("");
         setErrors({});
         // Refresh count from server after a short delay (worker needs time)
-        setTimeout(fetchCount, 2000);
+        setTimeout(async () => {
+          try {
+            const res = await fetch("/api/count");
+            if (res.ok) {
+              const data = await res.json();
+              setSignatureCount(data.confirmed ?? data.count ?? 0);
+            }
+          } catch {
+            // Silently fail
+          }
+        }, 2000);
       } else {
         setSubmitStatus("error");
         setErrorMessage(data.message || "خطایی رخ داده است");
@@ -120,12 +203,50 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col" dir="rtl">
-      {/* Landing Screen */}
+      {/* ── In-App Browser Banner ── */}
+      {inAppBrowser.is && (
+        <div className="fixed top-0 left-0 right-0 z-[60] bg-amber-500 text-white px-4 py-3 shadow-lg" dir="rtl">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm font-medium">
+              شما در مرورگر داخلی {inAppBrowser.name} هستید. برای تجربه بهتر و ثبت بیعت، لطفاً لینک را کپی کرده و در مرورگر خود باز کنید:
+            </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={copyLink}
+                className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+              >
+                {linkCopied ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    کپی شد!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    کپی لینک
+                  </>
+                )}
+              </button>
+              <a
+                href={typeof window !== "undefined" ? window.location.href : "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 bg-white text-amber-700 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors hover:bg-amber-50"
+              >
+                <ExternalLink className="h-4 w-4" />
+                باز کردن در مرورگر
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Landing Screen ── */}
+      {/* Uses CSS animations (not framer-motion initial) so content is visible even when JS fails */}
       <AnimatePresence>
         {!showContent && (
           <motion.div
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            initial={{ opacity: 1 }}
+            className={`fixed inset-0 z-50 flex items-center justify-center ${inAppBrowser.is ? "top-12" : ""}`}
             exit={{ opacity: 0, y: -100 }}
             transition={{ duration: 0.8, ease: "easeInOut" }}
           >
@@ -140,60 +261,38 @@ export default function Home() {
             {/* Dark Overlay */}
             <div className="absolute inset-0 bg-black/60" />
 
-            {/* Content */}
+            {/* Content — CSS animations work without JavaScript */}
             <div className="relative z-10 flex flex-col items-center gap-8 px-4">
-              <motion.h1
-                className="text-3xl md:text-5xl font-bold text-white text-center drop-shadow-2xl"
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, duration: 0.8 }}
-              >
+              <h1 className="animate-landing-title text-3xl md:text-5xl font-bold text-white text-center drop-shadow-2xl">
                 بیعت با ولی امر مسلمین
-              </motion.h1>
+              </h1>
 
-              <motion.p
-                className="text-lg md:text-xl text-white/80 text-center max-w-lg"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6, duration: 0.8 }}
-              >
+              <p className="animate-landing-subtitle text-lg md:text-xl text-white/80 text-center max-w-lg">
                 بیعت‌نامه مردم شهرستان بابل با امام‌المسلمین، حضرت آیت‌الله حاج سید مجتبی حسینی خامنه‌ای
-              </motion.p>
+              </p>
 
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 1, duration: 0.6 }}
-              >
+              <div className="animate-landing-button">
                 <Button
                   onClick={() => setShowContent(true)}
-                  className="relative px-10 py-7 text-lg font-bold rounded-2xl bg-gradient-to-l from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-2xl shadow-emerald-500/30 transition-all duration-300 hover:scale-105 active:scale-95"
-                  style={{
-                    animation: "pulse-glow 2s ease-in-out infinite",
-                  }}
+                  className="pulse-glow relative px-10 py-7 text-lg font-bold rounded-2xl bg-gradient-to-l from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-2xl shadow-emerald-500/30 transition-all duration-300 hover:scale-105 active:scale-95"
                 >
                   <PenLine className="ml-2 h-6 w-6" />
                   ورود و بیعت
                 </Button>
-              </motion.div>
+              </div>
 
               {showSignatureCount && (
-                <motion.div
-                  className="flex items-center gap-2 text-white/60 text-sm"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 1.5, duration: 0.6 }}
-                >
+                <div className="animate-landing-count flex items-center gap-2 text-white/60 text-sm">
                   <Users className="h-4 w-4" />
                   <span>تاکنون {(signatureCount ?? 0).toLocaleString("fa-IR")} نفر بیعت کرده‌اند</span>
-                </motion.div>
+                </div>
               )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Main Content */}
+      {/* ── Main Content ── */}
       <motion.div
         className={`flex-1 flex flex-col ${showContent ? "" : "opacity-0 pointer-events-none fixed"}`}
         initial={{ opacity: 0, y: 50 }}
@@ -456,17 +555,34 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* Pulse glow animation style */}
-      <style jsx global>{`
-        @keyframes pulse-glow {
-          0%, 100% {
-            box-shadow: 0 0 20px rgba(16, 185, 129, 0.3), 0 0 60px rgba(16, 185, 129, 0.1);
-          }
-          50% {
-            box-shadow: 0 0 30px rgba(16, 185, 129, 0.5), 0 0 80px rgba(16, 185, 129, 0.2);
-          }
-        }
-      `}</style>
+      {/* Noscript fallback — visible when JavaScript is disabled */}
+      <noscript>
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "rgba(0,0,0,0.8)",
+            color: "white",
+            fontFamily: "system-ui, sans-serif",
+            padding: "2rem",
+            textAlign: "center",
+            direction: "rtl",
+          }}
+        >
+          <div>
+            <h2 style={{ fontSize: "1.5rem", fontWeight: "bold", marginBottom: "1rem" }}>
+              برای استفاده از این سایت، لطفاً جاوااسکریپت را فعال کنید
+            </h2>
+            <p style={{ opacity: 0.8 }}>
+              لطفاً این صفحه را در مرورگر خود (کروم، فایرفاکس و...) باز کنید
+            </p>
+          </div>
+        </div>
+      </noscript>
     </div>
   );
 }
