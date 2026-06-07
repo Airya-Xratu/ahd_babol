@@ -44,6 +44,30 @@ function detectInAppBrowser(): { is: boolean; name: string } {
   return { is: false, name: "" };
 }
 
+/* ── Old browser detection ── */
+function detectOldBrowser(): boolean {
+  if (typeof window === "undefined") return false;
+
+  try {
+    // Test 1: CSS custom properties support (IE11, old Android)
+    if (!window.CSS || !CSS.supports) return true;
+
+    // Test 2: oklch color support (Chrome < 111, Safari < 15.4, Firefox < 113)
+    if (!CSS.supports("color", "oklch(1 0 0)")) return true;
+
+    // Test 3: Flexbox gap support (old Safari, old Chrome)
+    if (!CSS.supports("gap", "8px")) return true;
+
+    // Test 4: CSS grid support
+    if (!CSS.supports("display", "grid")) return true;
+
+    return false;
+  } catch {
+    // If CSS.supports itself fails, it's definitely an old browser
+    return true;
+  }
+}
+
 export default function Home() {
   const [showContent, setShowContent] = useState(false);
   const [signatureCount, setSignatureCount] = useState(0);
@@ -52,10 +76,13 @@ export default function Home() {
   const [errorMessage, setErrorMessage] = useState("");
   const formRef = useRef<HTMLDivElement>(null);
 
-  // In-app browser detection (ref avoids re-render; only read on client)
+  // In-app browser detection
   const inAppBrowserRef = useRef<{ is: boolean; name: string }>({ is: false, name: "" });
   const [inAppBrowser, setInAppBrowser] = useState<{ is: boolean; name: string }>({ is: false, name: "" });
   const [linkCopied, setLinkCopied] = useState(false);
+
+  // Old browser detection
+  const [isOldBrowser, setIsOldBrowser] = useState(false);
 
   // Form state
   const [firstName, setFirstName] = useState("");
@@ -68,13 +95,21 @@ export default function Home() {
   const SIGNATURE_DISPLAY_THRESHOLD = 5000;
   const showSignatureCount = signatureCount >= SIGNATURE_DISPLAY_THRESHOLD;
 
-  // Detect in-app browser on mount + start polling
+  // Detect browser capabilities on mount + start polling
   useEffect(() => {
-    // In-app browser detection (client-only, after hydration)
+    // In-app browser detection
     const detected = detectInAppBrowser();
     inAppBrowserRef.current = detected;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: must detect UA after hydration
     if (detected.is) setInAppBrowser(detected);
+
+    // Old browser detection — add legacy class to html
+    const oldBrowser = detectOldBrowser();
+    if (oldBrowser) {
+      setIsOldBrowser(true);
+      document.documentElement.classList.add("legacy");
+      console.log("[Compat] Old browser detected — degraded mode enabled");
+    }
 
     // Fetch initial signature count
     const fetchInitialCount = async () => {
@@ -201,6 +236,437 @@ export default function Home() {
     }
   };
 
+  /* ── OLD BROWSER: Simplified render without framer-motion ── */
+  if (isOldBrowser) {
+    return (
+      <div
+        dir="rtl"
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          fontFamily: "system-ui, sans-serif",
+          background: "#ffffff",
+          color: "#1a1a1a",
+        }}
+      >
+        {/* Old Browser Warning */}
+        {inAppBrowser.is && (
+          <div
+            style={{
+              background: "#f59e0b",
+              color: "#fff",
+              padding: "12px 16px",
+              textAlign: "center",
+              fontSize: "14px",
+            }}
+          >
+            <p>
+              شما در مرورگر داخلی {inAppBrowser.name} هستید. لطفاً لینک را کپی کرده و در مرورگر خود باز کنید.
+            </p>
+            <div style={{ marginTop: "8px", display: "flex", gap: "8px", justifyContent: "center" }}>
+              <button
+                onClick={copyLink}
+                style={{
+                  background: "rgba(255,255,255,0.2)",
+                  color: "#fff",
+                  border: "none",
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  cursor: "pointer",
+                  fontSize: "13px",
+                }}
+              >
+                {linkCopied ? "✓ کپی شد!" : "📋 کپی لینک"}
+              </button>
+              <a
+                href={typeof window !== "undefined" ? window.location.href : "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  background: "#fff",
+                  color: "#92400e",
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  textDecoration: "none",
+                  fontWeight: "bold",
+                  fontSize: "13px",
+                }}
+              >
+                🔗 باز کردن در مرورگر
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Landing Screen */}
+        {!showContent && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 50,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url('/background.png') center/cover no-repeat",
+            }}
+          >
+            <div
+              style={{
+                position: "relative",
+                zIndex: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: "24px",
+                padding: "16px",
+                textAlign: "center",
+                maxWidth: "600px",
+              }}
+            >
+              <h1
+                style={{
+                  fontSize: "clamp(1.75rem, 5vw, 3rem)",
+                  fontWeight: "bold",
+                  color: "#ffffff",
+                  textShadow: "0 2px 8px rgba(0,0,0,0.5)",
+                  margin: 0,
+                }}
+              >
+                بیعت با ولی امر مسلمین
+              </h1>
+
+              <p
+                style={{
+                  fontSize: "clamp(1rem, 2.5vw, 1.25rem)",
+                  color: "rgba(255,255,255,0.85)",
+                  margin: 0,
+                  lineHeight: 1.8,
+                }}
+              >
+                بیعت‌نامه مردم شهرستان بابل با امام‌المسلمین، حضرت آیت‌الله حاج سید مجتبی حسینی خامنه‌ای
+              </p>
+
+              <button
+                onClick={() => setShowContent(true)}
+                style={{
+                  background: "linear-gradient(to left, #10b981, #0d9488)",
+                  color: "#ffffff",
+                  border: "none",
+                  padding: "20px 40px",
+                  fontSize: "18px",
+                  fontWeight: "bold",
+                  borderRadius: "16px",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 20px rgba(16,185,129,0.4)",
+                  WebkitAppearance: "none" as never,
+                  appearance: "none",
+                }}
+              >
+                ✍️ ورود و بیعت
+              </button>
+
+              {showSignatureCount && (
+                <div style={{ color: "rgba(255,255,255,0.7)", fontSize: "14px" }}>
+                  👥 تاکنون {(signatureCount ?? 0).toLocaleString("fa-IR")} نفر بیعت کرده‌اند
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Main Content */}
+        {showContent && (
+          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            {/* Header */}
+            <div style={{ width: "100%", height: "200px", overflow: "hidden" }}>
+              <img
+                src="/header.png"
+                alt="سربرگ بیعت‌نامه"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            </div>
+
+            {/* Gradient Bar */}
+            <div
+              style={{
+                background: "linear-gradient(to left, #047857, #0f766e)",
+                color: "#fff",
+                padding: "12px 24px",
+              }}
+            >
+              <div style={{ maxWidth: "800px", margin: "0 auto", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontWeight: "bold" }}>
+                  {showSignatureCount
+                    ? `تعداد بیعت‌ها: ${(signatureCount ?? 0).toLocaleString("fa-IR")}`
+                    : "بیعت با ولی امر مسلمین"}
+                </span>
+              </div>
+            </div>
+
+            {/* Covenant Text */}
+            <section style={{ maxWidth: "800px", margin: "0 auto", width: "100%", padding: "32px 16px" }}>
+              <div
+                style={{
+                  background: "#fff",
+                  border: "1px solid #e5e5e5",
+                  borderRadius: "16px",
+                  padding: "24px",
+                }}
+              >
+                <h2
+                  style={{
+                    fontSize: "1.25rem",
+                    fontWeight: "bold",
+                    marginBottom: "20px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "10px",
+                  }}
+                >
+                  <span style={{ height: "28px", width: "5px", background: "#10b981", borderRadius: "4px", display: "inline-block" }} />
+                  متن بیعت‌نامه
+                </h2>
+                <div style={{ color: "#666", lineHeight: 2, fontSize: "0.9375rem" }}>
+                  <p style={{ textAlign: "center", color: "#1a1a1a", fontWeight: "bold", fontSize: "1.1rem", marginBottom: "20px" }}>
+                    بسم‌الله‌الرحمن‌الرحیم
+                  </p>
+                  <p style={{ marginBottom: "8px" }}>
+                    🔹 خدای علیم و حکیم را شاکریم که نعمت خود را بر ملت ایران و مظلومان عالم تمام نمود.
+                  </p>
+                  <p style={{ marginBottom: "8px" }}>
+                    🔹 شهادت قائد امت و عزیز ملت، شهید صائم و قائم و تالی قرآنِ دهم رمضان، حضرت شهید و شاهد، آیت‌الله العظمی امام حاج سید علی خامنه‌ای(قدس‌الله نفسه‌الزکیه)، قلوب همه ما را جریحه‌دار نمود.
+                  </p>
+                  <p style={{ marginBottom: "8px" }}>
+                    🔹 گویا دوباره همچون عهد رسول (ص)، همگی یتیم و بی‌پناه و بی‌کس شدیم. بیت‌الاحزان دل‌های ما، غمی را تجربه نمود از جنس غم ارتحال نبوی و شهادت علوی.
+                  </p>
+                  <p style={{ marginBottom: "8px" }}>
+                    🔹 اما در دل لیلةالقدر، مژده ظفر و پیروزی رسید و مرهمی بر دل‌ها شد. مژده آمد که:
+                  </p>
+                  <p style={{ textAlign: "center", color: "#1a1a1a", fontWeight: "bold", fontSize: "1.1rem", padding: "8px 0" }}>
+                    &ldquo;بعد علی، مجتباست<br />وارث روح خداست&rdquo;
+                  </p>
+                  <p style={{ marginBottom: "8px" }}>
+                    🔹 ای خلف خامنه‌ای عزیز، امام سید مجتبی خامنه‌ای!<br />
+                    ما مردم دارالمؤمنین بابل، از بن دل و جان و با تمام وجود با شما بیعت می‌کنیم و پیمان می‌بندیم که:
+                  </p>
+                  <p style={{ textAlign: "center", color: "#1a1a1a", fontWeight: "bold", fontSize: "1.1rem", padding: "8px 0" }}>
+                    &ldquo;خونی که در رگ ماست<br />هدیه به رهبر ماست&rdquo;
+                  </p>
+                  <p style={{ marginBottom: "8px" }}>
+                    🔹 ای خون‌خواه رهبر شهید و ملت مظلوم و کودکان بی‌گناه!<br />
+                    تا زمانی که شما امر بفرمایید، عمارگونه در میدان هستیم.
+                  </p>
+                  <p style={{ marginBottom: "8px" }}>
+                    🔅 ای خامنه‌ای عزیز، ما با حضرتعالی به‌عنوان وصیّ امام شهید (رحمة الله) و نایب امام زمان (عَجّلَ الله تَعٰالیٰ فَرَجَه) تجدید بیعت می‌کنیم و تا بذل جان در راه اجرای فرامین شما ایستاده‌ایم و فریاد بر‌می‌آوریم:
+                  </p>
+                  <p style={{ textAlign: "center", color: "#1a1a1a", fontWeight: "bold", fontSize: "1.1rem", padding: "8px 0" }}>
+                    &ldquo;لبیک یا خامنه‌ای<br />لبیک یا حسین است&rdquo;
+                  </p>
+                  <p style={{ marginBottom: "8px" }}>
+                    🔹 و همچون سید مقاومت، شهید سید حسن نصرالله، در چهله‌ی دوم بعثت امّت، که پیش‌گویی رهبر شهیدمان است، می‌گوییم:
+                  </p>
+                  <p style={{ textAlign: "center", color: "#1a1a1a", fontWeight: "bold", fontSize: "1.1rem", padding: "8px 0" }}>
+                    &ldquo;ما تراکناک یابن‌الحسین&rdquo;
+                  </p>
+                  <div style={{ marginTop: "24px", paddingTop: "16px", borderTop: "1px solid #e5e5e5", textAlign: "center" }}>
+                    <p style={{ color: "#1a1a1a", fontWeight: "bold" }}>
+                      بعثت مردم شهرستان دارالمؤمنین بابل
+                    </p>
+                    <p style={{ color: "#808080" }}>بهار ۱۴۰۵</p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Form Section */}
+            <section ref={formRef} style={{ maxWidth: "800px", margin: "0 auto", width: "100%", padding: "0 16px 48px" }}>
+              <div
+                style={{
+                  background: "#fff",
+                  border: "1px solid #e5e5e5",
+                  borderRadius: "16px",
+                  padding: "24px",
+                }}
+              >
+                <h2 style={{ fontSize: "1.25rem", fontWeight: "bold", marginBottom: "8px" }}>
+                  ✍️ فرم بیعت
+                </h2>
+                <p style={{ color: "#808080", fontSize: "14px", marginBottom: "24px" }}>
+                  اطلاعات خود را وارد کنید تا بیعت شما ثبت شود
+                </p>
+
+                {/* Status Messages */}
+                {submitStatus === "success" && (
+                  <div
+                    style={{
+                      marginBottom: "16px",
+                      padding: "12px",
+                      borderRadius: "12px",
+                      background: "#ecfdf5",
+                      border: "1px solid #a7f3d0",
+                      color: "#047857",
+                    }}
+                  >
+                    ✅ درخواست شما دریافت شد و در صف پردازش قرار گرفت.
+                    <p style={{ fontSize: "12px", marginTop: "4px", color: "#059669" }}>بیعت شما پس از تأیید، به شمارنده اضافه خواهد شد.</p>
+                  </div>
+                )}
+                {submitStatus === "error" && (
+                  <div
+                    style={{
+                      marginBottom: "16px",
+                      padding: "12px",
+                      borderRadius: "12px",
+                      background: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      color: "#dc2626",
+                    }}
+                  >
+                    ⚠️ {errorMessage}
+                  </div>
+                )}
+
+                <form onSubmit={handleSubmit}>
+                  {/* Name Row */}
+                  <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 200px", marginBottom: "16px" }}>
+                      <label htmlFor="firstName-legacy" style={{ display: "block", marginBottom: "4px", fontWeight: "bold", fontSize: "14px", color: "#333" }}>
+                        نام
+                      </label>
+                      <input
+                        id="firstName-legacy"
+                        type="text"
+                        placeholder="مثلاً: علی"
+                        value={firstName}
+                        onChange={(e) => {
+                          setFirstName(e.target.value);
+                          if (errors.firstName) setErrors((prev) => ({ ...prev, firstName: "" }));
+                        }}
+                        disabled={isSubmitting}
+                        style={{
+                          border: errors.firstName ? "2px solid #dc2626" : "2px solid #999",
+                          background: "#fff",
+                          color: "#000",
+                          padding: "10px 12px",
+                          fontSize: "16px",
+                          width: "100%",
+                          borderRadius: "8px",
+                          boxSizing: "border-box",
+                          textAlign: "right",
+                        }}
+                      />
+                      {errors.firstName && <p style={{ color: "#dc2626", fontSize: "12px", marginTop: "2px" }}>{errors.firstName}</p>}
+                    </div>
+                    <div style={{ flex: "1 1 200px", marginBottom: "16px" }}>
+                      <label htmlFor="lastName-legacy" style={{ display: "block", marginBottom: "4px", fontWeight: "bold", fontSize: "14px", color: "#333" }}>
+                        نام خانوادگی
+                      </label>
+                      <input
+                        id="lastName-legacy"
+                        type="text"
+                        placeholder="مثلاً: محمدی"
+                        value={lastName}
+                        onChange={(e) => {
+                          setLastName(e.target.value);
+                          if (errors.lastName) setErrors((prev) => ({ ...prev, lastName: "" }));
+                        }}
+                        disabled={isSubmitting}
+                        style={{
+                          border: errors.lastName ? "2px solid #dc2626" : "2px solid #999",
+                          background: "#fff",
+                          color: "#000",
+                          padding: "10px 12px",
+                          fontSize: "16px",
+                          width: "100%",
+                          borderRadius: "8px",
+                          boxSizing: "border-box",
+                          textAlign: "right",
+                        }}
+                      />
+                      {errors.lastName && <p style={{ color: "#dc2626", fontSize: "12px", marginTop: "2px" }}>{errors.lastName}</p>}
+                    </div>
+                  </div>
+
+                  {/* Mobile */}
+                  <div style={{ marginBottom: "24px" }}>
+                    <label htmlFor="mobile-legacy" style={{ display: "block", marginBottom: "4px", fontWeight: "bold", fontSize: "14px", color: "#333" }}>
+                      شماره موبایل
+                    </label>
+                    <input
+                      id="mobile-legacy"
+                      type="tel"
+                      placeholder="۰۹xxxxxxxxx"
+                      maxLength={11}
+                      value={mobile}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "");
+                        setMobile(val);
+                        if (errors.mobile) setErrors((prev) => ({ ...prev, mobile: "" }));
+                      }}
+                      disabled={isSubmitting}
+                      style={{
+                        border: errors.mobile ? "2px solid #dc2626" : "2px solid #999",
+                        background: "#fff",
+                        color: "#000",
+                        padding: "10px 12px",
+                        fontSize: "16px",
+                        width: "100%",
+                        borderRadius: "8px",
+                        boxSizing: "border-box",
+                        textAlign: "right",
+                        letterSpacing: "2px",
+                      }}
+                    />
+                    {errors.mobile && <p style={{ color: "#dc2626", fontSize: "12px", marginTop: "2px" }}>{errors.mobile}</p>}
+                  </div>
+
+                  {/* Submit */}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    style={{
+                      background: isSubmitting ? "#999" : "linear-gradient(to left, #10b981, #0d9488)",
+                      color: "#fff",
+                      border: "none",
+                      padding: "18px 32px",
+                      fontSize: "18px",
+                      fontWeight: "bold",
+                      cursor: isSubmitting ? "not-allowed" : "pointer",
+                      width: "100%",
+                      borderRadius: "12px",
+                      WebkitAppearance: "none",
+                      appearance: "none",
+                    }}
+                  >
+                    {isSubmitting ? "⏳ در حال ارسال..." : "✍️ ثبت بیعت"}
+                  </button>
+                </form>
+              </div>
+            </section>
+
+            {/* Footer */}
+            <footer
+              style={{
+                marginTop: "auto",
+                background: "#f5f5f5",
+                borderTop: "1px solid #e5e5e5",
+                padding: "20px",
+                textAlign: "center",
+              }}
+            >
+              <p style={{ color: "#808080", fontSize: "14px", margin: 0 }}>
+                پلتفرم بیعت‌نامه بابل | تمامی حقوق محفوظ است
+              </p>
+            </footer>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  /* ── MODERN BROWSER: Full-featured render with framer-motion ── */
   return (
     <div className="min-h-screen flex flex-col" dir="rtl">
       {/* ── In-App Browser Banner ── */}
@@ -299,7 +765,7 @@ export default function Home() {
         animate={showContent ? { opacity: 1, y: 0 } : { opacity: 0, y: 50 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
       >
-        {/* Header Image — no text overlay, image has its own text */}
+        {/* Header Image */}
         <header className="relative w-full h-48 md:h-64 overflow-hidden">
           <Image
             src="/header.png"
@@ -310,18 +776,16 @@ export default function Home() {
           />
         </header>
 
-        {/* Gradient Bar — always visible; counts hidden when < 5k */}
+        {/* Gradient Bar */}
         <div className="bg-gradient-to-l from-emerald-600 to-teal-700 text-white py-3 px-6">
           <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2">
             {showSignatureCount ? (
-              <>
-                <div className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  <span className="font-medium">
-                    تعداد بیعت‌ها: {(signatureCount ?? 0).toLocaleString("fa-IR")}
-                  </span>
-                </div>
-              </>
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                <span className="font-medium">
+                  تعداد بیعت‌ها: {(signatureCount ?? 0).toLocaleString("fa-IR")}
+                </span>
+              </div>
             ) : (
               <div className="flex items-center gap-2">
                 <PenLine className="h-5 w-5" />

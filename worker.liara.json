@@ -1,0 +1,5 @@
+{
+  "platform": "docker",
+  "dockerfile": "worker.Dockerfile",
+  "port": 0
+}

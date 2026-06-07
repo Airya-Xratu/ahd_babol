@@ -75,6 +75,7 @@ export default function RootLayout({
       </head>
       <body
         className={`${iranYekan.variable} font-sans antialiased bg-background text-foreground`}
+        style={{ backgroundColor: "#ffffff", color: "#1a1a1a" }}
         suppressHydrationWarning
       >
         {children}
